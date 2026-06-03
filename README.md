@@ -1,7 +1,12 @@
 # Button Assistant Enchanced
 
-<!-- Demo GIF placeholder: replace this line with a gameplay loop when ready. -->
-![Button Assistant Enchanced demo](docs/demo.gif)
+<p align="center">
+  <img src="Media/ButtonAssistantEnchanced_icon_256.png" width="132" alt="Button Assistant Enchanced icon">
+</p>
+
+<p align="center">
+  <img src="docs/demo.gif" alt="Button Assistant Enchanced gameplay demo">
+</p>
 
 **Button Assistant Enchanced** is a polished visual companion for Blizzard's Assisted Combat feature in modern World of Warcraft Retail. It gives the default recommendation system the kind of readable, responsive, and customizable feedback that makes relaxed gameplay feel smooth instead of vague.
 
