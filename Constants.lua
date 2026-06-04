@@ -76,6 +76,8 @@ NS.defaults = {
 	hideInVehicle = true,
 
 	scale = 1.0,
+	mainX = 0,
+	mainY = -120,
 
 	showKeybind = true,
 	showCooldown = true,
@@ -125,11 +127,23 @@ NS.defaults = {
 
 	-- Avada Tracker Defaults
 	avadaEnabled = true,
+	avadaScale = 1.0,
 	avadaSize = 16,
 	avadaSpacing = 4,
 	avadaOffsetY = -10,
 	avadaShowBorder = true,
 	avadaBorderStyle = "classic", -- "classic", "dark"
+	avadaCustomCooldownText = true,
+	avadaCooldownFont = "Numeric",
+	avadaCooldownFontSize = 12,
+	avadaCooldownFontOutline = "OUTLINE",
+	avadaDetached = false,
+	avadaX = 0,
+	avadaY = -180,
+	avadaColumns = 6,
+	avadaRows = 1,
+	editSnapToGrid = true,
+	editGridSize = 32,
 	avadaIndices = {}, -- Character specID -> profileIndex
 	avadaProfiles = {}, -- Character/Account specID -> { [index] = "dataString" }
 }

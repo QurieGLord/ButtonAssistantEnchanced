@@ -17,6 +17,9 @@ function NS.RegisterSettings()
 		return setting
 	end
 
+	-- The "Right" label is standard for showing values next to sliders
+	local labelRight = (MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label and MinimalSliderWithSteppersMixin.Label.Right) or 2
+
 	-- General Toggle
 	local enabledSetting = Register("enabled", Settings.VarType.Boolean, "Enabled", true, "Enable or disable the addon.", function()
 		if NS.UpdateNow then
@@ -29,11 +32,55 @@ function NS.RegisterSettings()
 	local lockedSetting = Register("locked", Settings.VarType.Boolean, "Locked", false, "Lock the frame to prevent dragging.")
 	Settings.CreateCheckbox(category, lockedSetting, "Lock the suggestion button in place.")
 
+	local editSubcat = Settings.RegisterVerticalLayoutSubcategory(category, "Layout Editor")
+
+	local function OpenLayoutEditorFromSettings()
+		if SettingsPanel then
+			if HideUIPanel then
+				pcall(HideUIPanel, SettingsPanel)
+			elseif SettingsPanel.Hide then
+				SettingsPanel:Hide()
+			end
+		end
+		local function enter()
+			if NS.SetEditMode then
+				NS.SetEditMode(true)
+			end
+		end
+		if NS.C_Timer_After then
+			NS.C_Timer_After(0, enter)
+		else
+			enter()
+		end
+	end
+
+	if Settings.CreateButton then
+		local ok = pcall(Settings.CreateButton, editSubcat, "Layout Editor", "Enter Edit Mode", OpenLayoutEditorFromSettings, "Close settings and edit the addon layout on the screen.")
+		if not ok then
+			pcall(Settings.CreateButton, editSubcat, "Enter Edit Mode", OpenLayoutEditorFromSettings, "Close settings and edit the addon layout on the screen.")
+		end
+	end
+
+	local snapSetting = Register("editSnapToGrid", Settings.VarType.Boolean, "Snap to Grid", true, nil, function()
+		if NS.RefreshEditGrid then
+			NS.RefreshEditGrid()
+		end
+	end)
+	Settings.CreateCheckbox(editSubcat, snapSetting, "Snap frames to the editor grid when moving them.")
+
+	local gridSizeSetting = Register("editGridSize", Settings.VarType.Number, "Grid Size", 32, nil, function()
+		if NS.RefreshEditGrid then
+			NS.RefreshEditGrid()
+		end
+	end)
+	local gridSizeOptions = Settings.CreateSliderOptions(8, 96, 4)
+	gridSizeOptions:SetLabelFormatter(labelRight, function(value)
+		return value .. "px"
+	end)
+	Settings.CreateSlider(editSubcat, gridSizeSetting, gridSizeOptions, "Spacing between layout editor grid lines.")
+
 	-- Visual Settings Category
 	local visualSubcat = Settings.RegisterVerticalLayoutSubcategory(category, "Main Button")
-
-	-- The "Right" label is standard for showing values next to sliders
-	local labelRight = (MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label and MinimalSliderWithSteppersMixin.Label.Right) or 2
 
 	local function GetFontOptions()
 		local container = Settings.CreateControlTextContainer()
@@ -369,6 +416,17 @@ function NS.RegisterSettings()
 	end)
 	Settings.CreateCheckbox(avadaSubcat, avadaEnabledSetting, "Track important class-specific spells below the suggestion button.")
 
+	local avadaScaleSetting = Register("avadaScale", Settings.VarType.Number, "Scale", 1.0, nil, function()
+		if NS.UpdateLayout then
+			NS.UpdateLayout()
+		end
+	end)
+	local avadaScaleOptions = Settings.CreateSliderOptions(0.5, 2.0, 0.05)
+	avadaScaleOptions:SetLabelFormatter(labelRight, function(value)
+		return (NS.math_floor(value * 100)) .. "%"
+	end)
+	Settings.CreateSlider(avadaSubcat, avadaScaleSetting, avadaScaleOptions, "Overall scale of the Avada Tracker frame.")
+
 	-- Avada Size
 	local avadaSizeSetting = Register("avadaSize", Settings.VarType.Number, "Icon Size", 16, nil, function()
 		if NS.UpdateLayout then
@@ -392,6 +450,32 @@ function NS.RegisterSettings()
 		return value .. "px"
 	end)
 	Settings.CreateSlider(avadaSubcat, avadaSpacingSetting, avadaSpacingOptions, "Spacing between icons.")
+
+	local avadaColumnsSetting = Register("avadaColumns", Settings.VarType.Number, "Columns", 6, nil, function(_, value)
+		if NS.SetAvadaColumns then
+			NS.SetAvadaColumns(value or NS.db.avadaColumns)
+		elseif NS.UpdateLayout then
+			NS.UpdateLayout()
+		end
+	end)
+	local avadaColumnsOptions = Settings.CreateSliderOptions(1, 6, 1)
+	avadaColumnsOptions:SetLabelFormatter(labelRight, function(value)
+		return value
+	end)
+	Settings.CreateSlider(avadaSubcat, avadaColumnsSetting, avadaColumnsOptions, "Number of Avada tracker columns. Rows expand only when needed to fit visible icons.")
+
+	local avadaRowsSetting = Register("avadaRows", Settings.VarType.Number, "Rows", 1, nil, function(_, value)
+		if NS.SetAvadaRows then
+			NS.SetAvadaRows(value or NS.db.avadaRows)
+		elseif NS.UpdateLayout then
+			NS.UpdateLayout()
+		end
+	end)
+	local avadaRowsOptions = Settings.CreateSliderOptions(1, 6, 1)
+	avadaRowsOptions:SetLabelFormatter(labelRight, function(value)
+		return value
+	end)
+	Settings.CreateSlider(avadaSubcat, avadaRowsSetting, avadaRowsOptions, "Number of Avada tracker rows. Columns expand only when needed to fit visible icons.")
 
 	-- Avada Offset Y
 	local avadaOffsetYSetting = Register("avadaOffsetY", Settings.VarType.Number, "Vertical Offset", -10, nil, function()
@@ -420,6 +504,30 @@ function NS.RegisterSettings()
 	end)
 	Settings.CreateDropdown(avadaSubcat, avadaBorderStyleSetting, GetBorderStyleOptions, "Choose the border style used by Avada tracker icons.")
 
+	local avadaCustomCdSetting = Register("avadaCustomCooldownText", Settings.VarType.Boolean, "Cooldown Text", true, nil, function()
+		if NS.UpdateNow then NS.UpdateNow() end
+	end)
+	Settings.CreateCheckbox(avadaSubcat, avadaCustomCdSetting, "Show cooldown countdown text on Avada Tracker icons.")
+
+	local avadaCdFontSetting = Register("avadaCooldownFont", Settings.VarType.String, "Cooldown Font", "Numeric", nil, function()
+		if NS.UpdateLayout then NS.UpdateLayout() end
+	end)
+	Settings.CreateDropdown(avadaSubcat, avadaCdFontSetting, GetFontOptions, "Select the font style for Avada cooldown text.")
+
+	local avadaCdFontSizeSetting = Register("avadaCooldownFontSize", Settings.VarType.Number, "Cooldown Font Size", 12, nil, function()
+		if NS.UpdateLayout then NS.UpdateLayout() end
+	end)
+	local avadaCdFontSizeOptions = Settings.CreateSliderOptions(6, 24, 1)
+	avadaCdFontSizeOptions:SetLabelFormatter(labelRight, function(value)
+		return value .. "pt"
+	end)
+	Settings.CreateSlider(avadaSubcat, avadaCdFontSizeSetting, avadaCdFontSizeOptions, "Adjust the text size of Avada cooldown timers.")
+
+	local avadaCdOutlineSetting = Register("avadaCooldownFontOutline", Settings.VarType.String, "Cooldown Text Outline", "OUTLINE", nil, function()
+		if NS.UpdateLayout then NS.UpdateLayout() end
+	end)
+	Settings.CreateDropdown(avadaSubcat, avadaCdOutlineSetting, GetOutlineOptions, "Adjust the outline style of Avada cooldown text.")
+
 	Settings.RegisterAddOnCategory(category)
 	NS.SettingsCategory = category
 end
@@ -438,6 +546,13 @@ SlashCmdList.BUTTONASSISTANTENCHANCED = function(msg)
 		NS.db.enabled = not NS.db.enabled
 		if NS.UpdateNow then
 			NS.UpdateNow()
+		end
+		return
+	end
+
+	if msg == "edit" or msg == "layout" then
+		if NS.ToggleEditMode then
+			NS.ToggleEditMode()
 		end
 		return
 	end

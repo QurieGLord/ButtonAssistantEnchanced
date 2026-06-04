@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.1] - 2026-06-04
+
+A smoother layout and feedback pass for players who like their UI to stay where they put it.
+
+### Highlights
+
+- Reworked the bounce animation so it feels cleaner and stays centered on the icon.
+- Kept Avada Tracker icons steady while the main recommendation button plays its visual feedback.
+- Added an in-game layout editor with a grid, optional snap, drag handles, and right-click layout controls.
+- Added precise placement controls for the main button and Avada Tracker.
+- Added separate scale, row, and column controls for cleaner Avada Tracker setups.
+- Added optional Avada Tracker cooldown text with its own font settings.
+- Improved Avada Tracker cooldown handling in combat and reduced GCD-like flicker when no tracked cooldown is running.
+- Added a quick exit button while layout edit mode is active.
+- Refreshed README notes for the new layout workflow.
+
 ## [1.0.0] - 2026-06-04
 
 Initial public release of **Button Assistant Enchanced**.

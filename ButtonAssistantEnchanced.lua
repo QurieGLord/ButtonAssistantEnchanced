@@ -412,6 +412,10 @@ local clean_effectProcBounceEnabled = false
 local clean_effectProcFlashEnabled = false
 local clean_avadaEnabled = true
 local clean_avadaBorderStyle = "classic"
+local clean_avadaCustomCooldownText = true
+local clean_avadaCooldownFont = "Numeric"
+local clean_avadaCooldownFontSize = 12
+local clean_avadaCooldownFontOutline = "OUTLINE"
 
 function NS.SyncCleanSettings()
 	if not NS.db then return end
@@ -458,6 +462,10 @@ function NS.SyncCleanSettings()
 	clean_effectProcFlashEnabled = NS.db.effectProcFlashEnabled
 	clean_avadaEnabled = NS.db.avadaEnabled
 	clean_avadaBorderStyle = NS.db.avadaBorderStyle or "classic"
+	clean_avadaCustomCooldownText = NS.db.avadaCustomCooldownText
+	clean_avadaCooldownFont = NS.db.avadaCooldownFont or NS.db.cooldownFont or "Numeric"
+	clean_avadaCooldownFontSize = NS.db.avadaCooldownFontSize or 12
+	clean_avadaCooldownFontOutline = NS.db.avadaCooldownFontOutline or NS.db.cooldownFontOutline or "OUTLINE"
 
 	-- Cache clean hasted GCD duration out-of-combat
 	if not InCombatLockdown() then
@@ -484,8 +492,103 @@ frame:EnableMouse(true)
 frame:RegisterForDrag("LeftButton")
 frame:SetClampedToScreen(true)
 
+local function Round(value)
+	if value >= 0 then
+		return math.floor(value + 0.5)
+	end
+	return math.ceil(value - 0.5)
+end
+
+local function Clamp(value, minValue, maxValue)
+	if value < minValue then
+		return minValue
+	elseif value > maxValue then
+		return maxValue
+	end
+	return value
+end
+
+local function GetGridSize()
+	local gridSize = NS.db and NS.db.editGridSize or 32
+	if not gridSize or gridSize < 4 then
+		gridSize = 4
+	end
+	return gridSize
+end
+
+local function SnapValue(value)
+	local gridSize = GetGridSize()
+	return Round((value or 0) / gridSize) * gridSize
+end
+
+local function MaybeSnapPosition(x, y)
+	if NS.db and NS.db.editSnapToGrid then
+		return SnapValue(x), SnapValue(y)
+	end
+	return Round(x or 0), Round(y or 0)
+end
+
+local function GetCenterOffset(target)
+	if not target then
+		return 0, 0
+	end
+
+	local x, y = target:GetCenter()
+	local parentX, parentY = NS.UIParent:GetCenter()
+	if not x or not y or not parentX or not parentY then
+		return 0, 0
+	end
+
+	return x - parentX, y - parentY
+end
+
+local function SetFrameCenter(target, x, y)
+	if not target then
+		return
+	end
+
+	target:ClearAllPoints()
+	target:SetPoint("CENTER", NS.UIParent, "CENTER", x or 0, y or 0)
+end
+
+local function SaveMainPosition(snap)
+	if not NS.db then
+		return
+	end
+
+	local x, y = GetCenterOffset(frame)
+	if snap then
+		x, y = MaybeSnapPosition(x, y)
+		SetFrameCenter(frame, x, y)
+	end
+	NS.db.mainX = Round(x)
+	NS.db.mainY = Round(y)
+end
+
+local function ApplyMainPosition()
+	if not NS.db then
+		return
+	end
+
+	SetFrameCenter(frame, NS.db.mainX or 0, NS.db.mainY or -120)
+end
+
+local function SaveAvadaPosition(snap)
+	if not NS.db or not frame.avada then
+		return
+	end
+
+	local x, y = GetCenterOffset(frame.avada)
+	if snap then
+		x, y = MaybeSnapPosition(x, y)
+		SetFrameCenter(frame.avada, x, y)
+	end
+	NS.db.avadaX = Round(x)
+	NS.db.avadaY = Round(y)
+end
+
 frame:SetScript("OnDragStart", function(self)
-	if NS.db.locked then
+	if NS.db.locked and not NS.editMode then
 		return
 	end
 	if NS.InCombatLockdown and NS.InCombatLockdown() then
@@ -496,6 +599,7 @@ end)
 
 frame:SetScript("OnDragStop", function(self)
 	self:StopMovingOrSizing()
+	SaveMainPosition(NS.editMode)
 end)
 
 local function IsSecretValue(val)
@@ -609,10 +713,6 @@ local function TryActionDurationObject(api, slot, ignoreGCD)
 end
 
 local function GetActionDurationObjectForSpell(spellID, preferCharges)
-	if InCombatLockdown() then
-		return nil
-	end
-
 	local slots = GetCachedActionSlotsForSpell(spellID)
 	if not slots or #slots == 0 then
 		return nil
@@ -663,6 +763,15 @@ local function GetCooldownRemainingForText(spellID)
 
 	if ok and IsPositiveCleanNumber(remaining) then
 		return remaining
+	end
+
+	local now = GetTime()
+	local cd = activeCooldowns[baseID] or activeCooldowns[spellID]
+	if cd and cd.startTime and cd.duration then
+		remaining = cd.startTime + cd.duration - now
+		if remaining > 0 then
+			return remaining
+		end
 	end
 
 	return nil
@@ -1250,9 +1359,10 @@ local function EnsureFocusPulse(button)
 		return button.focusPulse
 	end
 
-	local f = NS.CreateFrame("Frame", nil, button)
+	local host = button.visualRoot or button
+	local f = NS.CreateFrame("Frame", nil, host)
 	f:SetAllPoints(button.icon or button)
-	f:SetFrameLevel(button:GetFrameLevel() + 8)
+	f:SetFrameLevel(host:GetFrameLevel() + 8)
 	f:Hide()
 
 	f.wash = f:CreateTexture(nil, "OVERLAY")
@@ -1613,9 +1723,10 @@ local function EnsureProcSweepGlow(button)
 		return button.procSweepGlow
 	end
 
-	local f = NS.CreateFrame("Frame", nil, button)
+	local host = button.visualRoot or button
+	local f = NS.CreateFrame("Frame", nil, host)
 	f:SetAllPoints(button.icon or button)
-	f:SetFrameLevel(button:GetFrameLevel() + 9)
+	f:SetFrameLevel(host:GetFrameLevel() + 9)
 	f:Hide()
 
 	local function makeTexture(layer, blend)
@@ -1754,8 +1865,9 @@ local function EnsureBlizzardProcGlow(button)
 		return button.blizzardProcGlow
 	end
 
-	local f = NS.CreateFrame("Frame", nil, button)
-	f:SetFrameLevel(button:GetFrameLevel() + 10)
+	local host = button.visualRoot or button
+	local f = NS.CreateFrame("Frame", nil, host)
+	f:SetFrameLevel(host:GetFrameLevel() + 10)
 	f:Hide()
 
 	f.ProcStart = f:CreateTexture(nil, "ARTWORK")
@@ -1860,7 +1972,7 @@ local function ShowBlizzardProcGlow(button, restart)
 	f:ClearAllPoints()
 	f:SetPoint("TOPLEFT", target, "TOPLEFT", -xOffset, yOffset)
 	f:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", xOffset, -yOffset)
-	f:SetFrameLevel(button:GetFrameLevel() + 10)
+	f:SetFrameLevel((button.visualRoot or button):GetFrameLevel() + 10)
 	f.active = true
 	f:Show()
 
@@ -1969,26 +2081,21 @@ local function OnButtonUpdate(self, elapsed)
 	SafeCallClean(function()
 		local now = GetTime()
 
-			-- 1. Bounce scale animation
-			if self.isBouncing and self.bounceStart then
-				local progress = now - self.bounceStart
-				local duration = 0.18
-				if progress < duration then
-					local amplitude = (clean_bounceScale or 1.15) - 1.0
-					local t = progress / duration
-					local scale
-					if t < 0.42 then
-						local p = t / 0.42
-						scale = 1.0 + amplitude * (1 - ((1 - p) ^ 3))
-					else
-						local p = (t - 0.42) / 0.58
-						scale = 1.0 + amplitude * ((1 - p) ^ 3)
-					end
-					self:SetScale((clean_scale or 1.0) * scale)
-				else
-					self:SetScale(clean_scale or 1.0)
-					self.isBouncing = false
-				end
+		-- 1. Bounce scale animation
+		if self.isBouncing and self.bounceStart then
+			local visual = self.visualRoot or self
+			local progress = now - self.bounceStart
+			local duration = 0.26
+			if progress < duration then
+				local amplitude = math.max(0.02, math.min((clean_bounceScale or 1.10) - 1.0, 0.28))
+				local t = progress / duration
+				local envelope = (1 - t) ^ 1.25
+				local spring = math.sin(t * math.pi * 2)
+				visual:SetScale(1 + amplitude * 1.35 * spring * envelope)
+			else
+				visual:SetScale(1)
+				self.isBouncing = false
+			end
 		end
 
 		-- 2. Flash overlay fade-out
@@ -2003,7 +2110,7 @@ local function OnButtonUpdate(self, elapsed)
 			end
 		end
 
-			-- 3. Throttled UI & Cooldown Visual Update (Runs every 0.05 seconds / 20 FPS)
+		-- 3. Throttled UI & Cooldown Visual Update (Runs every 0.05 seconds / 20 FPS)
 		self.timeSinceLastUpdate = (self.timeSinceLastUpdate or 0) + elapsed
 		if self.timeSinceLastUpdate >= 0.05 then
 			self.timeSinceLastUpdate = 0
@@ -2051,8 +2158,9 @@ local function EnsureDarkBorder(button)
 		return button.darkBorder
 	end
 
-	local f = NS.CreateFrame("Frame", nil, button)
-	f:SetFrameLevel(button:GetFrameLevel() + 6)
+	local host = button.visualRoot or button
+	local f = NS.CreateFrame("Frame", nil, host)
+	f:SetFrameLevel(host:GetFrameLevel() + 6)
 	f:Hide()
 
 	local function makeLine()
@@ -2105,7 +2213,7 @@ local function ApplyDarkBorder(button, size)
 	f:ClearAllPoints()
 	f:SetPoint("TOPLEFT", target, "TOPLEFT", -1, 1)
 	f:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 1, -1)
-	f:SetFrameLevel(button:GetFrameLevel() + 6)
+	f:SetFrameLevel((button.visualRoot or button):GetFrameLevel() + 6)
 
 	local outer = math.max(1, math.floor((size or 40) / 32 + 0.5))
 	local inner = 1
@@ -2153,38 +2261,44 @@ local function CreateSuggestionButton(parent)
 	b:SetSize(NS.db.buttonSize, NS.db.buttonSize)
 	b:SetFrameLevel(parent:GetFrameLevel() + 2)
 
-	b.icon = b:CreateTexture(nil, "BACKGROUND")
+	b.visualRoot = NS.CreateFrame("Frame", nil, b)
+	b.visualRoot:SetPoint("CENTER", b, "CENTER", 0, 0)
+	b.visualRoot:SetSize(NS.db.buttonSize, NS.db.buttonSize)
+	b.visualRoot:SetFrameLevel(b:GetFrameLevel() + 1)
+	b.visualRoot:SetScale(1)
+
+	b.icon = b.visualRoot:CreateTexture(nil, "BACKGROUND")
 	b.icon:SetAllPoints()
 	b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
 	-- Modern HUD Border
-	b.border = b:CreateTexture(nil, "OVERLAY")
+	b.border = b.visualRoot:CreateTexture(nil, "OVERLAY")
 	b.border:SetTexture("Interface/HUD/UIActionBar")
 	b.border:SetTexCoord(0.707031, 0.886719, 0.248047, 0.291992)
 	b.border:SetPoint("CENTER", b.icon, "CENTER", 0, 0)
 	b.border:SetSize(46, 45) -- Default size relative to 40px button, scaler will handle resizing
 
-	b.cooldown = NS.CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+	b.cooldown = NS.CreateFrame("Cooldown", nil, b.visualRoot, "CooldownFrameTemplate")
 	b.cooldown:SetAllPoints(b.icon)
-	b.cooldown:SetFrameLevel(b:GetFrameLevel())
+	b.cooldown:SetFrameLevel(b.visualRoot:GetFrameLevel() + 1)
 	-- One-time cooldown init (asNextSkill pattern — never set these per-frame!)
 	ApplyCooldownWidgetStyle(b.cooldown, false)
 	b.cooldown:Show() -- Show once, never Hide/Show cycle — use Clear() instead
 
-	b.hotkey = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall") -- Using a cleaner number font
+	b.hotkey = b.visualRoot:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall") -- Using a cleaner number font
 	b.hotkey:SetPoint("TOPRIGHT", b.icon, "TOPRIGHT", -2, -2)
 	b.hotkey:SetJustifyH("RIGHT")
 	b.hotkey:SetDrawLayer("OVERLAY", 7)
 
 	-- Custom Cooldown Text Overlaid
-	b.customCooldownText = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+	b.customCooldownText = b.visualRoot:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 	b.customCooldownText:SetPoint("CENTER", b.icon, "CENTER", 0, 0)
 	b.customCooldownText:SetJustifyH("CENTER")
 	b.customCooldownText:SetDrawLayer("OVERLAY", 7)
 	b.customCooldownText:Hide()
 
 	-- Flash Overlay texture for swap animation
-	b.flash = b:CreateTexture(nil, "OVERLAY")
+	b.flash = b.visualRoot:CreateTexture(nil, "OVERLAY")
 	b.flash:SetTexture("Interface\\Buttons\\WHITE8X8")
 	b.flash:SetAllPoints(b.icon)
 	b.flash:SetBlendMode("ADD")
@@ -2223,13 +2337,85 @@ local function CreateAvadaIcon(parent, index)
 	b.count:SetPoint("BOTTOMRIGHT", b.icon, "BOTTOMRIGHT", 0, 0)
 	b.count:SetJustifyH("RIGHT")
 
+	b.customCooldownText = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+	b.customCooldownText:SetPoint("CENTER", b.icon, "CENTER", 0, 0)
+	b.customCooldownText:SetJustifyH("CENTER")
+	b.customCooldownText:SetDrawLayer("OVERLAY", 7)
+	b.customCooldownText:Hide()
+
 	return b
+end
+
+local MAX_AVADA_ICONS = 6
+
+local function GetAvadaIconCount()
+	local count = 0
+	local list = local_GetAvadaTargetList and local_GetAvadaTargetList()
+	if list then
+		for i = 1, MAX_AVADA_ICONS do
+			if list[i] and list[i].spellID then
+				count = i
+			end
+		end
+	end
+
+	if count < 1 then
+		count = MAX_AVADA_ICONS
+	end
+	return Clamp(count, 1, MAX_AVADA_ICONS)
+end
+
+local function GetAvadaGrid()
+	local count = GetAvadaIconCount()
+	local columns = Clamp(Round(NS.db.avadaColumns or count), 1, count)
+	local rows = Clamp(Round(NS.db.avadaRows or math.ceil(count / columns)), 1, count)
+	if columns * rows < count then
+		rows = Clamp(math.ceil(count / columns), 1, count)
+	end
+	NS.db.avadaColumns = columns
+	NS.db.avadaRows = rows
+	return columns, rows, count
+end
+
+function NS.SetAvadaColumns(columns)
+	if not NS.db then
+		return
+	end
+
+	local count = GetAvadaIconCount()
+	NS.db.avadaColumns = Clamp(Round(columns or count), 1, count)
+	NS.db.avadaRows = Clamp(Round(NS.db.avadaRows or math.ceil(count / NS.db.avadaColumns)), 1, count)
+	if NS.db.avadaColumns * NS.db.avadaRows < count then
+		NS.db.avadaRows = math.ceil(count / NS.db.avadaColumns)
+	end
+	if NS.UpdateLayout then
+		NS.UpdateLayout()
+	end
+end
+
+function NS.SetAvadaRows(rows)
+	if not NS.db then
+		return
+	end
+
+	local count = GetAvadaIconCount()
+	rows = Clamp(Round(rows or 1), 1, count)
+	NS.db.avadaRows = rows
+	NS.db.avadaColumns = Clamp(Round(NS.db.avadaColumns or math.ceil(count / rows)), 1, count)
+	if NS.db.avadaColumns * NS.db.avadaRows < count then
+		NS.db.avadaColumns = math.ceil(count / NS.db.avadaRows)
+	end
+	if NS.UpdateLayout then
+		NS.UpdateLayout()
+	end
 end
 
 function NS.UpdateAvadaLayout()
 	if not frame.avada then
-		frame.avada = NS.CreateFrame("Frame", "ButtonAssistantEnchancedAvadaFrame", frame)
+		frame.avada = NS.CreateFrame("Frame", "ButtonAssistantEnchancedAvadaFrame", NS.UIParent, "BackdropTemplate")
 		frame.avada.icons = {}
+		frame.avada:SetMovable(true)
+		frame.avada:SetClampedToScreen(true)
 	end
 
 	local f = frame.avada
@@ -2237,17 +2423,24 @@ function NS.UpdateAvadaLayout()
 	local spacing = NS.db.avadaSpacing or 4
 	local offsetY = NS.db.avadaOffsetY or -10
 	local showBorder = NS.db.avadaShowBorder
+	local columns, rows, count = GetAvadaGrid()
 
 	f:ClearAllPoints()
-	f:SetPoint("TOP", frame.button, "BOTTOM", 0, offsetY)
-	f:SetSize((size + spacing) * 6 - spacing, size)
+	if NS.db.avadaDetached then
+		SetFrameCenter(f, NS.db.avadaX or 0, NS.db.avadaY or -180)
+	else
+		f:SetPoint("TOP", frame.button, "BOTTOM", 0, offsetY)
+	end
+	f:SetScale(NS.db.avadaScale or 1.0)
+	f:SetSize((size * columns) + (spacing * (columns - 1)), (size * rows) + (spacing * (rows - 1)))
 
 	if not f.value then
 		f.value = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-		f.value:SetPoint("RIGHT", frame.button, "LEFT", -10, 0)
 	end
+	f.value:ClearAllPoints()
+	f.value:SetPoint("RIGHT", frame.button, "LEFT", -10, 0)
 
-	for i = 1, 6 do
+	for i = 1, MAX_AVADA_ICONS do
 		local icon = f.icons[i]
 		if not icon then
 			icon = CreateAvadaIcon(f, i)
@@ -2255,13 +2448,21 @@ function NS.UpdateAvadaLayout()
 		end
 		icon:SetSize(size, size)
 		icon:ClearAllPoints()
-		icon:SetPoint("LEFT", f, "LEFT", (i - 1) * (size + spacing), 0)
+		if i <= count then
+			local index = i - 1
+			local col = index % columns
+			local row = math.floor(index / columns)
+			icon:SetPoint("TOPLEFT", f, "TOPLEFT", col * (size + spacing), -row * (size + spacing))
+		end
 
 		ApplyIconBorderStyle(icon, size, showBorder, NS.db.avadaBorderStyle or "classic")
+		if icon.customCooldownText then
+			ApplyConfiguredFont(icon.customCooldownText, NS.db.avadaCooldownFont or NS.db.cooldownFont or "Numeric", NS.db.avadaCooldownFontSize or 12, NS.db.avadaCooldownFontOutline or NS.db.cooldownFontOutline or "OUTLINE", "NumberFontNormal")
+		end
 
-		icon:SetShown(NS.db.avadaEnabled)
+		icon:SetShown((NS.editMode or NS.db.avadaEnabled) and i <= count)
 	end
-	f:SetShown(NS.db.avadaEnabled)
+	f:SetShown(NS.editMode or NS.db.avadaEnabled)
 end
 
 function NS.UpdateLayout()
@@ -2273,9 +2474,18 @@ function NS.UpdateLayout()
 	end
 
 	-- Update Size
+	ApplyMainPosition()
 	b:SetSize(size, size)
 	b:ClearAllPoints()
 	b:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+	if b.visualRoot then
+		b.visualRoot:ClearAllPoints()
+		b.visualRoot:SetPoint("CENTER", b, "CENTER", 0, 0)
+		b.visualRoot:SetSize(size, size)
+		if not b.isBouncing then
+			b.visualRoot:SetScale(1)
+		end
+	end
 
 	ApplyIconBorderStyle(b, size, NS.db.showBorder, NS.db.borderStyle or "classic")
 
@@ -2284,8 +2494,8 @@ function NS.UpdateLayout()
 
 	-- Update custom cooldown text font and size
 	if b.customCooldownText then
-			ApplyConfiguredFont(b.customCooldownText, NS.db.cooldownFont or "Numeric", NS.db.cooldownFontSize or 14, NS.db.cooldownFontOutline or "OUTLINE", "NumberFontNormal")
-		end
+		ApplyConfiguredFont(b.customCooldownText, NS.db.cooldownFont or "Numeric", NS.db.cooldownFontSize or 14, NS.db.cooldownFontOutline or "OUTLINE", "NumberFontNormal")
+	end
 
 	-- Sync Settings Copy
 	NS.SyncCleanSettings()
@@ -2378,6 +2588,12 @@ function NS.UpdateVisibility()
 	NS.SafeCall(function()
 		local f = NS.frame
 		if not f then
+			return
+		end
+
+		if NS.editMode then
+			f:SetAlpha(1)
+			f:Show()
 			return
 		end
 
@@ -2568,7 +2784,7 @@ function UpdateButton(b, spellID)
 	end
 
 function UpdateAvada()
-	if not clean_avadaEnabled or not frame.avada then
+	if (not clean_avadaEnabled and not NS.editMode) or not frame.avada then
 		if frame.avada then
 			frame.avada:Hide()
 		end
@@ -2577,15 +2793,19 @@ function UpdateAvada()
 
 	local list = local_GetAvadaTargetList()
 	if not list then
-		frame.avada:Hide()
-		return
+		if NS.editMode then
+			list = {}
+		else
+			frame.avada:Hide()
+			return
+		end
 	end
 
 	frame.avada:Show()
 	local showValue = false
 	local tracker = frame.avada
 
-	for i = 1, 6 do
+	for i = 1, MAX_AVADA_ICONS do
 		local icon = tracker.icons[i]
 		local data = list[i]
 		if data and data.spellID then
@@ -2602,16 +2822,16 @@ function UpdateAvada()
 			end
 			icon.icon:SetTexture(tex or "Interface/Icons/INV_Misc_QuestionMark")
 
-			local alpha = 1.0
 			local countText = ""
 			local startTime, duration = 0, 0
-				local countColor = { 1, 1, 1 }
-				local desaturated = false
-				local cooldownHandled = false
-				local cooldownIsZero = false
-				local cooldownReadyCached = false
+			local countColor = { 1, 1, 1 }
+			local desaturated = false
+			local cooldownHandled = false
+			local cooldownIsZero = false
+			local cooldownReadyCached = false
+			local cooldownRemaining
 
-				if aType == "buff" or aType == "debuff" then
+			if aType == "buff" or aType == "debuff" then
 				local filter = (aType == "debuff") and "HARMFUL" or "HELPFUL"
 				local aura, value = local_GetAuraInfo(unit, id, filter)
 				if aura then
@@ -2633,68 +2853,84 @@ function UpdateAvada()
 					countText = charges
 				end
 
-					-- Direct DurationObject path (asNextSkill approach)
-					local preferChargeCooldown = charges and maxCharges and maxCharges > 1 and charges < maxCharges
-					local durationobj
-					if preferChargeCooldown then
-						durationobj = TryGetSpellChargeDurationObject(id)
+				local preferChargeCooldown = charges and maxCharges and maxCharges > 1 and charges < maxCharges
+				local durationobj
+				if preferChargeCooldown then
+					durationobj = TryGetSpellChargeDurationObject(id)
+					if durationobj and IsDurationObjectZero(durationobj) == false then
+						cooldownRemaining = GetCooldownRemainingForText(id)
 					end
-					if not durationobj then
-						durationobj = TryGetSpellCooldownDurationObject(id, true)
-					end
-					if not durationobj and not preferChargeCooldown then
-						durationobj = TryGetSpellChargeDurationObject(id)
-					end
+				end
 
-					if durationobj then
-						local durationZero = IsDurationObjectZero(durationobj)
-						local cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":" .. tostring(durationZero == false)
-						if durationZero == false then
-							cooldownHandled = true
-							desaturated = true
-							countColor = { 1, 1, 1 }
-							if icon.cooldownVisualKey ~= cooldownKey or icon.cooldownVisualSerial ~= cooldownVisualSerial then
-								local ok = pcall(icon.cooldown.SetCooldownFromDurationObject, icon.cooldown, durationobj)
-								if ok then
-									icon.cooldownVisualKey = cooldownKey
-									icon.cooldownVisualSerial = cooldownVisualSerial
-								else
-									cooldownHandled = false
-									desaturated = false
-									icon.cooldownVisualKey = nil
-									icon.cooldownVisualSerial = nil
-								end
-							end
-						else
-							cooldownHandled = true
-							cooldownIsZero = true
-							desaturated = false
-							cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":ready"
-							if icon.cooldownVisualKey ~= cooldownKey or icon.cooldownVisualSerial ~= cooldownVisualSerial then
-								ClearCooldownWidget(icon.cooldown, true)
+				if not durationobj then
+					cooldownRemaining = GetCooldownRemainingForText(id)
+				end
+
+				if not durationobj and cooldownRemaining and cooldownRemaining > 1.55 then
+					durationobj = GetActionDurationObjectForSpell(id, preferChargeCooldown)
+				end
+				if not durationobj and cooldownRemaining and cooldownRemaining > 1.55 then
+					durationobj = TryGetSpellCooldownDurationObject(id, true)
+				end
+				if not durationobj and cooldownRemaining and cooldownRemaining > 1.55 then
+					durationobj = TryGetSpellCooldownDurationObject(id, false)
+				end
+
+				if durationobj and (preferChargeCooldown or (cooldownRemaining and cooldownRemaining > 1.55)) then
+					local durationZero = IsDurationObjectZero(durationobj)
+					local cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":active"
+					if durationZero == false then
+						cooldownHandled = true
+						desaturated = true
+						countColor = { 1, 1, 1 }
+						if icon.cooldownVisualKey ~= cooldownKey then
+							local ok = pcall(icon.cooldown.SetCooldownFromDurationObject, icon.cooldown, durationobj)
+							if ok then
 								icon.cooldownVisualKey = cooldownKey
-								icon.cooldownVisualSerial = cooldownVisualSerial
+								icon.cooldownVisualSerial = nil
 							else
-								cooldownReadyCached = true
+								cooldownHandled = false
+								desaturated = false
+								icon.cooldownVisualKey = nil
+								icon.cooldownVisualSerial = nil
 							end
 						end
 					else
 						cooldownHandled = true
 						cooldownIsZero = true
 						desaturated = false
-						local cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":ready"
-						if charges and maxCharges and charges == maxCharges then
-							countColor = { 1, 0, 0 }
-						end
-						if icon.cooldownVisualKey ~= cooldownKey or icon.cooldownVisualSerial ~= cooldownVisualSerial then
+						cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":ready"
+						if icon.cooldownVisualKey ~= cooldownKey then
 							ClearCooldownWidget(icon.cooldown, true)
 							icon.cooldownVisualKey = cooldownKey
-							icon.cooldownVisualSerial = cooldownVisualSerial
+							icon.cooldownVisualSerial = nil
 						else
 							cooldownReadyCached = true
 						end
 					end
-				elseif aType == "item" then
+				elseif cooldownRemaining and cooldownRemaining > 1.55 then
+					local start, dur = GetSpellCooldownClean(id)
+					if start and dur and start > 0 and dur > 0 then
+						startTime, duration = start, dur
+						desaturated = true
+					end
+				else
+					cooldownHandled = true
+					cooldownIsZero = true
+					desaturated = false
+					local cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":ready"
+					if charges and maxCharges and charges == maxCharges then
+						countColor = { 1, 0, 0 }
+					end
+					if icon.cooldownVisualKey ~= cooldownKey then
+						ClearCooldownWidget(icon.cooldown, true)
+						icon.cooldownVisualKey = cooldownKey
+						icon.cooldownVisualSerial = nil
+					else
+						cooldownReadyCached = true
+					end
+				end
+			elseif aType == "item" then
 				local count = local_C_Item_GetItemCount and local_C_Item_GetItemCount(id)
 				if IsCleanNumber(count) and count > 1 then
 					countText = count
@@ -2710,18 +2946,27 @@ function UpdateAvada()
 			icon.icon:SetDesaturated(desaturated)
 			icon.count:SetText(countText)
 			icon.count:SetTextColor(unpack(countColor))
+			if icon.customCooldownText then
+				if clean_avadaCustomCooldownText and aType == "cd" and cooldownRemaining and cooldownRemaining > 0 and ApplyCustomCooldownText(icon.customCooldownText, cooldownRemaining) then
+					icon.cooldown:SetHideCountdownNumbers(true)
+				else
+					icon.customCooldownText:Hide()
+					icon.cooldown:SetHideCountdownNumbers(true)
+				end
+			end
 
-				if cooldownHandled then
-					if not cooldownReadyCached then
-						icon.cooldown:SetReverse(false)
-						icon.cooldown:SetHideCountdownNumbers(true)
-						icon.cooldown:SetDrawSwipe(not cooldownIsZero)
-						icon.cooldown:Show()
-						if not cooldownIsZero then
-							ApplyCooldownSweepColor(icon.cooldown)
-						end
+			if cooldownHandled then
+				if not cooldownReadyCached then
+					icon.cooldown:SetReverse(false)
+					icon.cooldown:SetHideCountdownNumbers(true)
+					icon.cooldown:SetDrawSwipe(not cooldownIsZero)
+					icon.cooldown:Show()
+					if not cooldownIsZero then
+						ApplyCooldownSweepColor(icon.cooldown)
 					end
-				elseif startTime and duration and duration > 0 then
+				end
+			else
+				if startTime and duration and duration > 0 then
 					icon.cooldown:SetReverse(aType == "buff" or aType == "debuff")
 					SafeSetCooldown(icon.cooldown, startTime, duration)
 					icon.cooldown:Show()
@@ -2735,17 +2980,573 @@ function UpdateAvada()
 						icon.cooldownVisualSerial = cooldownVisualSerial
 					end
 				end
-				icon:Show()
-			else
-				icon.cooldownVisualKey = nil
-				icon.cooldownVisualSerial = nil
-				icon:Hide()
 			end
+
+			icon:Show()
+		elseif NS.editMode and i <= GetAvadaIconCount() then
+			icon.icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
+			icon.icon:SetDesaturated(true)
+			icon.count:SetText("")
+			icon.count:SetTextColor(1, 1, 1)
+			ClearCooldownWidget(icon.cooldown, true)
+			icon.cooldownVisualKey = nil
+			icon.cooldownVisualSerial = nil
+			if icon.customCooldownText then
+				icon.customCooldownText:Hide()
+			end
+			icon:Show()
+		else
+			icon.cooldownVisualKey = nil
+			icon.cooldownVisualSerial = nil
+			if icon.customCooldownText then
+				icon.customCooldownText:Hide()
+			end
+			icon:Hide()
+		end
 	end
 
 	if not showValue then
 		tracker.value:SetText("")
 	end
+end
+
+local editUI
+
+local function EnsureEditUI()
+	if editUI then
+		return editUI
+	end
+
+	local ui = {}
+	editUI = ui
+
+	local overlay = NS.CreateFrame("Frame", "ButtonAssistantEnchancedEditOverlay", NS.UIParent)
+	overlay:SetAllPoints(NS.UIParent)
+	overlay:SetFrameStrata("BACKGROUND")
+	overlay:SetFrameLevel(500)
+	overlay:EnableMouse(false)
+	overlay:Hide()
+	ui.overlay = overlay
+	ui.gridLines = {}
+	ui.freeGridLines = {}
+
+	local bg = overlay:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(0, 0, 0, 0.10)
+	ui.bg = bg
+
+	local function acquireLine()
+		local line = table.remove(ui.freeGridLines)
+		if not line then
+			line = overlay:CreateTexture(nil, "ARTWORK")
+			line:SetTexture("Interface\\Buttons\\WHITE8X8")
+		end
+		line:Show()
+		ui.gridLines[#ui.gridLines + 1] = line
+		return line
+	end
+
+	local function clearGrid()
+		for i = #ui.gridLines, 1, -1 do
+			local line = ui.gridLines[i]
+			line:ClearAllPoints()
+			line:Hide()
+			ui.freeGridLines[#ui.freeGridLines + 1] = line
+			ui.gridLines[i] = nil
+		end
+	end
+
+	local function drawGrid()
+		clearGrid()
+		local width, height = overlay:GetSize()
+		if not width or width <= 0 or not height or height <= 0 then
+			width, height = NS.UIParent:GetSize()
+		end
+
+		local spacing = GetGridSize()
+		local centerX, centerY = width / 2, height / 2
+		local thickness = 1
+
+		local centerV = acquireLine()
+		centerV:SetColorTexture(0.95, 0.76, 0.22, 0.45)
+		centerV:SetWidth(2)
+		centerV:SetPoint("TOP", overlay, "TOPLEFT", centerX, 0)
+		centerV:SetPoint("BOTTOM", overlay, "BOTTOMLEFT", centerX, 0)
+
+		local centerH = acquireLine()
+		centerH:SetColorTexture(0.95, 0.76, 0.22, 0.45)
+		centerH:SetHeight(2)
+		centerH:SetPoint("LEFT", overlay, "BOTTOMLEFT", 0, centerY)
+		centerH:SetPoint("RIGHT", overlay, "BOTTOMRIGHT", 0, centerY)
+
+		for x = spacing, centerX, spacing do
+			local left = centerX - x
+			local right = centerX + x
+			for _, px in ipairs({ left, right }) do
+				local line = acquireLine()
+				line:SetColorTexture(0.55, 0.65, 0.78, 0.22)
+				line:SetWidth(thickness)
+				line:SetPoint("TOP", overlay, "TOPLEFT", px, 0)
+				line:SetPoint("BOTTOM", overlay, "BOTTOMLEFT", px, 0)
+			end
+		end
+
+		for y = spacing, centerY, spacing do
+			local bottom = centerY - y
+			local top = centerY + y
+			for _, py in ipairs({ bottom, top }) do
+				local line = acquireLine()
+				line:SetColorTexture(0.55, 0.65, 0.78, 0.22)
+				line:SetHeight(thickness)
+				line:SetPoint("LEFT", overlay, "BOTTOMLEFT", 0, py)
+				line:SetPoint("RIGHT", overlay, "BOTTOMRIGHT", 0, py)
+			end
+		end
+	end
+	ui.drawGrid = drawGrid
+	ui.clearGrid = clearGrid
+
+	local function getOwner(kind)
+		if kind == "avada" then
+			return frame.avada
+		end
+		return frame
+	end
+
+	local function updateHandle(handle)
+		local owner = getOwner(handle.kind)
+		if not owner then
+			handle:Hide()
+			return
+		end
+
+		handle:ClearAllPoints()
+		handle:SetPoint("TOPLEFT", owner, "TOPLEFT", -3, 3)
+		handle:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", 3, -3)
+		handle:Show()
+	end
+
+	local function updateHandles()
+		if not NS.editMode then
+			return
+		end
+
+		updateHandle(ui.mainHandle)
+		updateHandle(ui.avadaHandle)
+	end
+	ui.updateHandles = updateHandles
+
+	local function makeHandle(kind, label)
+		local h = NS.CreateFrame("Button", nil, NS.UIParent)
+		h.kind = kind
+		h:RegisterForClicks("AnyUp")
+		h:RegisterForDrag("LeftButton")
+		h:SetFrameStrata("DIALOG")
+		h:SetFrameLevel(600)
+		h:EnableMouse(true)
+		h:Hide()
+
+		h.bg = h:CreateTexture(nil, "BACKGROUND")
+		h.bg:SetAllPoints()
+		h.bg:SetColorTexture(0.08, 0.18, 0.28, 0.42)
+
+		h.border = h:CreateTexture(nil, "BORDER")
+		h.border:SetAllPoints()
+		h.border:SetColorTexture(0.12, 0.62, 0.78, 0.36)
+
+		h.text = h:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		h.text:SetPoint("CENTER")
+		h.text:SetText(label .. "\n|cffb0d8ffDrag|r  |cffffd36bRight-click|r")
+		h.text:SetJustifyH("CENTER")
+
+		h:SetScript("OnDragStart", function(self)
+			if InCombatLockdown() then
+				return
+			end
+			local owner = getOwner(self.kind)
+			if owner then
+				owner:SetMovable(true)
+				owner:StartMoving()
+				self.isMoving = true
+			end
+		end)
+
+		h:SetScript("OnDragStop", function(self)
+			local owner = getOwner(self.kind)
+			if owner and self.isMoving then
+				owner:StopMovingOrSizing()
+				if self.kind == "avada" then
+					NS.db.avadaDetached = true
+					SaveAvadaPosition(true)
+					NS.UpdateAvadaLayout()
+				else
+					SaveMainPosition(true)
+					NS.UpdateAvadaLayout()
+				end
+			end
+			self.isMoving = nil
+			updateHandles()
+			if ui.panel and ui.panel:IsShown() then
+				NS.ShowEditPanel(self.kind)
+			end
+		end)
+
+		h:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then
+				NS.ShowEditPanel(self.kind)
+			end
+		end)
+
+		return h
+	end
+
+	ui.mainHandle = makeHandle("main", "Main Button")
+	ui.avadaHandle = makeHandle("avada", "Avada Tracker")
+
+	local panel = NS.CreateFrame("Frame", "ButtonAssistantEnchancedEditPanel", NS.UIParent, "BackdropTemplate")
+	panel:SetSize(310, 510)
+	panel:SetPoint("CENTER", NS.UIParent, "CENTER", 340, 0)
+	panel:SetFrameStrata("DIALOG")
+	panel:SetFrameLevel(650)
+	panel:SetMovable(true)
+	panel:EnableMouse(true)
+	panel:RegisterForDrag("LeftButton")
+	panel:SetClampedToScreen(true)
+	panel:SetBackdrop({
+		bgFile = "Interface\\Buttons\\WHITE8X8",
+		edgeFile = "Interface\\Buttons\\WHITE8X8",
+		edgeSize = 1,
+	})
+	panel:SetBackdropColor(0.035, 0.04, 0.05, 0.94)
+	panel:SetBackdropBorderColor(0.18, 0.48, 0.62, 0.9)
+	panel:SetScript("OnDragStart", panel.StartMoving)
+	panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
+	panel:Hide()
+	ui.panel = panel
+
+	panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	panel.title:SetPoint("TOPLEFT", 14, -12)
+
+	local close = NS.CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", -4, -4)
+
+	local exit = NS.CreateFrame("Button", "ButtonAssistantEnchancedExitEditButton", NS.UIParent, "UIPanelButtonTemplate")
+	exit:SetSize(132, 24)
+	exit:SetPoint("TOP", NS.UIParent, "TOP", 0, -18)
+	exit:SetFrameStrata("DIALOG")
+	exit:SetFrameLevel(700)
+	exit:SetText("Exit Edit Mode")
+	exit:SetScript("OnClick", function()
+		NS.SetEditMode(false)
+	end)
+	exit:Hide()
+	ui.exitButton = exit
+
+	local function makeLabel(text, x, y)
+		local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		fs:SetPoint("TOPLEFT", x, y)
+		fs:SetText(text)
+		return fs
+	end
+
+	local function makeEditBox(name, x, y, width)
+		makeLabel(name, x, y)
+		local eb = NS.CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+		eb:SetSize(width or 72, 22)
+		eb:SetAutoFocus(false)
+		eb:SetPoint("TOPLEFT", x + 58, y + 3)
+		eb:SetFontObject("GameFontHighlightSmall")
+		eb:SetScript("OnEscapePressed", eb.ClearFocus)
+		eb:SetScript("OnEnterPressed", function(self)
+			if panel.applyCoordinates then
+				panel.applyCoordinates()
+			end
+			self:ClearFocus()
+		end)
+		return eb
+	end
+
+	local function makeSlider(name, y, minValue, maxValue, step, format, onChanged)
+		local slider = NS.CreateFrame("Slider", nil, panel, "UISliderTemplate")
+		slider:SetPoint("TOPLEFT", 18, y)
+		slider:SetSize(214, 18)
+		slider:SetMinMaxValues(minValue, maxValue)
+		slider:SetValueStep(step or 1)
+		if slider.SetObeyStepOnDrag then
+			slider:SetObeyStepOnDrag(true)
+		end
+
+		slider.label = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		slider.label:SetPoint("BOTTOMLEFT", slider, "TOPLEFT", 0, 3)
+		slider.label:SetText(name)
+
+		slider.valueText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		slider.valueText:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+
+		slider.format = format or "%d"
+		slider:SetScript("OnValueChanged", function(self, value)
+			value = Round(value / (step or 1)) * (step or 1)
+			self.valueText:SetText(string.format(self.format, value))
+			if not self.updating and onChanged then
+				onChanged(value)
+			end
+		end)
+		return slider
+	end
+
+	local function setSliderValue(slider, value, minValue, maxValue)
+		slider.updating = true
+		if minValue and maxValue then
+			slider:SetMinMaxValues(minValue, maxValue)
+		end
+		slider:SetValue(value)
+		slider.valueText:SetText(string.format(slider.format or "%d", value))
+		slider.updating = nil
+	end
+	ui.setSliderValue = setSliderValue
+
+	local function setSliderShown(slider, shown)
+		slider:SetShown(shown)
+		if slider.label then
+			slider.label:SetShown(shown)
+		end
+		if slider.valueText then
+			slider.valueText:SetShown(shown)
+		end
+	end
+	ui.setSliderShown = setSliderShown
+
+	local xBox = makeEditBox("X", 18, -56, 76)
+	local yBox = makeEditBox("Y", 162, -56, 76)
+	panel.xBox = xBox
+	panel.yBox = yBox
+
+	local apply = NS.CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	apply:SetSize(74, 22)
+	apply:SetPoint("TOPLEFT", 18, -86)
+	apply:SetText("Apply")
+	apply:SetScript("OnClick", function()
+		if panel.applyCoordinates then
+			panel.applyCoordinates()
+		end
+	end)
+
+	local reset = NS.CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	reset:SetSize(74, 22)
+	reset:SetPoint("LEFT", apply, "RIGHT", 8, 0)
+	reset:SetText("Reset")
+	reset:SetScript("OnClick", function()
+		if panel.kind == "avada" then
+			NS.db.avadaDetached = false
+			NS.db.avadaX = 0
+			NS.db.avadaY = -180
+		else
+			NS.db.mainX = 0
+			NS.db.mainY = -120
+		end
+		NS.UpdateLayout()
+		updateHandles()
+		NS.ShowEditPanel(panel.kind)
+	end)
+
+	local function attachCheckLabel(check, text)
+		local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		label:SetPoint("LEFT", check, "RIGHT", -2, 0)
+		label:SetText(text)
+		check.label = label
+		return label
+	end
+
+	local detach = NS.CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+	detach:SetPoint("TOPLEFT", 18, -116)
+	attachCheckLabel(detach, "Separate Avada position")
+	detach:SetScript("OnClick", function(self)
+		NS.db.avadaDetached = self:GetChecked() and true or false
+		if NS.db.avadaDetached then
+			SaveAvadaPosition(true)
+		end
+		NS.UpdateLayout()
+		updateHandles()
+	end)
+	panel.detach = detach
+
+	local snap = NS.CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+	snap:SetPoint("TOPLEFT", 18, -146)
+	attachCheckLabel(snap, "Snap to grid")
+	snap:SetScript("OnClick", function(self)
+		NS.db.editSnapToGrid = self:GetChecked() and true or false
+	end)
+	panel.snap = snap
+
+	panel.gridSlider = makeSlider("Grid Size", -190, 8, 96, 4, "%dpx", function(value)
+		NS.db.editGridSize = value
+		drawGrid()
+	end)
+	panel.scaleSlider = makeSlider("Main Scale", -238, 50, 200, 5, "%d%%", function(value)
+		NS.db.scale = value / 100
+		NS.UpdateLayout()
+		updateHandles()
+	end)
+	panel.avadaScaleSlider = makeSlider("Avada Scale", -238, 50, 200, 5, "%d%%", function(value)
+		NS.db.avadaScale = value / 100
+		NS.UpdateLayout()
+		updateHandles()
+	end)
+	panel.columnsSlider = makeSlider("Avada Columns", -286, 1, MAX_AVADA_ICONS, 1, "%d", function(value)
+		NS.SetAvadaColumns(value)
+		updateHandles()
+		NS.ShowEditPanel("avada")
+	end)
+	panel.rowsSlider = makeSlider("Avada Rows", -334, 1, MAX_AVADA_ICONS, 1, "%d", function(value)
+		NS.SetAvadaRows(value)
+		updateHandles()
+		NS.ShowEditPanel("avada")
+	end)
+	panel.sizeSlider = makeSlider("Avada Icon Size", -382, 10, 48, 1, "%dpx", function(value)
+		NS.db.avadaSize = value
+		NS.UpdateLayout()
+		updateHandles()
+	end)
+	panel.spacingSlider = makeSlider("Avada Spacing", -430, 0, 16, 1, "%dpx", function(value)
+		NS.db.avadaSpacing = value
+		NS.UpdateLayout()
+		updateHandles()
+	end)
+
+	function panel.applyCoordinates()
+		local x = tonumber(xBox:GetText())
+		local y = tonumber(yBox:GetText())
+		if not x or not y then
+			return
+		end
+		x, y = MaybeSnapPosition(x, y)
+		if panel.kind == "avada" then
+			NS.db.avadaDetached = true
+			NS.db.avadaX = x
+			NS.db.avadaY = y
+			NS.UpdateAvadaLayout()
+		else
+			NS.db.mainX = x
+			NS.db.mainY = y
+			ApplyMainPosition()
+			NS.UpdateAvadaLayout()
+		end
+		updateHandles()
+		NS.ShowEditPanel(panel.kind)
+	end
+
+	overlay:SetScript("OnShow", function()
+		drawGrid()
+		updateHandles()
+	end)
+	overlay:SetScript("OnHide", function()
+		clearGrid()
+	end)
+	overlay:SetScript("OnUpdate", function(self, elapsed)
+		self.elapsed = (self.elapsed or 0) + elapsed
+		if self.elapsed >= 0.05 then
+			self.elapsed = 0
+			updateHandles()
+		end
+	end)
+
+	return ui
+end
+
+function NS.ShowEditPanel(kind)
+	local ui = EnsureEditUI()
+	local panel = ui.panel
+	kind = kind == "avada" and "avada" or "main"
+	panel.kind = kind
+	panel.title:SetText(kind == "avada" and "Avada Tracker Layout" or "Main Button Layout")
+
+	local x, y
+	if kind == "avada" then
+		x, y = NS.db.avadaX or 0, NS.db.avadaY or -180
+		if frame.avada and not NS.db.avadaDetached then
+			x, y = GetCenterOffset(frame.avada)
+		end
+	else
+		x, y = NS.db.mainX or 0, NS.db.mainY or -120
+	end
+	panel.xBox:SetText(tostring(Round(x)))
+	panel.yBox:SetText(tostring(Round(y)))
+	panel.snap:SetChecked(NS.db.editSnapToGrid and true or false)
+	panel.detach:SetShown(kind == "avada")
+	if panel.detach.label then
+		panel.detach.label:SetShown(kind == "avada")
+	end
+	panel.detach:SetChecked(NS.db.avadaDetached and true or false)
+
+	ui.setSliderValue(panel.gridSlider, GetGridSize())
+	ui.setSliderValue(panel.scaleSlider, Round((NS.db.scale or 1) * 100))
+
+	local isAvada = kind == "avada"
+	ui.setSliderShown(panel.scaleSlider, not isAvada)
+	ui.setSliderShown(panel.avadaScaleSlider, isAvada)
+	ui.setSliderShown(panel.sizeSlider, isAvada)
+	ui.setSliderShown(panel.spacingSlider, isAvada)
+	ui.setSliderShown(panel.columnsSlider, isAvada)
+	ui.setSliderShown(panel.rowsSlider, isAvada)
+
+	if isAvada then
+		local columns, rows, count = GetAvadaGrid()
+		ui.setSliderValue(panel.avadaScaleSlider, Round((NS.db.avadaScale or 1) * 100))
+		ui.setSliderValue(panel.sizeSlider, NS.db.avadaSize or 16)
+		ui.setSliderValue(panel.spacingSlider, NS.db.avadaSpacing or 4)
+		ui.setSliderValue(panel.columnsSlider, columns, 1, count)
+		ui.setSliderValue(panel.rowsSlider, rows, 1, count)
+	end
+
+	panel:Show()
+end
+
+function NS.SetEditMode(enabled)
+	if enabled and InCombatLockdown() then
+		print("|cff4e84b1[Button Assistant Enchanced]|r Layout edit mode is unavailable in combat.")
+		return
+	end
+
+	NS.editMode = enabled and true or false
+	local ui = EnsureEditUI()
+	if NS.editMode then
+		NS.UpdateLayout()
+		frame:Show()
+		if frame.button then
+			frame.button:Show()
+		end
+		if frame.avada then
+			frame.avada:Show()
+		end
+		ui.overlay:Show()
+		if ui.exitButton then
+			ui.exitButton:Show()
+		end
+		ui.updateHandles()
+		print("|cff4e84b1[Button Assistant Enchanced]|r Edit mode enabled. Drag frames or right-click them for layout options.")
+	else
+		ui.overlay:Hide()
+		if ui.exitButton then ui.exitButton:Hide() end
+		if ui.mainHandle then ui.mainHandle:Hide() end
+		if ui.avadaHandle then ui.avadaHandle:Hide() end
+		if ui.panel then ui.panel:Hide() end
+		NS.UpdateVisibility()
+		NS.UpdateNow()
+		print("|cff4e84b1[Button Assistant Enchanced]|r Edit mode disabled.")
+	end
+end
+
+function NS.ToggleEditMode()
+	NS.SetEditMode(not NS.editMode)
+end
+
+function NS.RefreshEditGrid()
+	if not NS.editMode then
+		return
+	end
+	local ui = EnsureEditUI()
+	ui.drawGrid()
+	ui.updateHandles()
 end
 
 function NS.UpdateNow()

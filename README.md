@@ -20,7 +20,8 @@ It is built for players who want to lean back, enjoy the fight, maybe embrace a 
 - Proc feedback with Blizzard-style glow, a minimal focus glow, or a custom sweep-line glow.
 - Ready and cooldown-finished feedback through short flash, pulse, and bounce effects.
 - Range and usability tinting for quick at-a-glance decisions.
-- Avada Tracker icons for compact cooldown awareness below the main button.
+- Avada Tracker icons for compact cooldown awareness, with optional countdown text.
+- A lightweight layout editor for placing the main button and Avada Tracker with a grid, snap, and tidy row layouts.
 - In-game settings organized by layout, cooldowns, feedback, effects, logic, and tracker controls.
 
 ## Why It Exists
@@ -58,6 +59,13 @@ Open the addon settings.
 Toggle the assistant on or off.
 
 ```text
+/bae edit
+/bae layout
+```
+
+Open the layout editor. Drag the main button or Avada Tracker on the grid, or right-click a frame for precise layout controls.
+
+```text
 /bae logs
 ```
 
@@ -73,6 +81,7 @@ Open Avada Tracker configuration.
 
 The settings panel is split into focused sections:
 
+- **Layout Editor**: grid size and snap-to-grid behavior for the in-game layout mode.
 - **Main Button**: size, scale, and border style.
 - **Visibility**: combat and out-of-combat opacity, combat-only display, vehicle hiding.
 - **Keybind Text**: keybind visibility, font style, and font size.
@@ -82,7 +91,7 @@ The settings panel is split into focused sections:
 - **Effects - Cooldown Ready**: feedback when the current recommendation becomes ready.
 - **Effects - Proc Highlight**: persistent proc glow style and proc-start feedback.
 - **Recommendation Logic**: action-bar visibility filtering.
-- **Avada Tracker**: compact tracker layout, border style, and display controls.
+- **Avada Tracker**: compact tracker layout, scale, rows, columns, cooldown text, border style, and display controls.
 
 ## Notes
 
