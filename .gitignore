@@ -5,3 +5,5 @@ Thumbs.db
 *.rar
 *.log
 .luacheckcache
+dist/
+*.mp4

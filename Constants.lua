@@ -67,6 +67,7 @@ NS.defaults = {
 	locked = false,
 
 	buttonSize = 40,
+	keybindFont = "Numeric",
 	keybindFontSize = 12,
 
 	alphaCombat = 1.0,
@@ -79,6 +80,7 @@ NS.defaults = {
 	showKeybind = true,
 	showCooldown = true,
 	showBorder = true,
+	borderStyle = "classic", -- "classic", "dark"
 
 	checkVisibleButton = true, -- affects GetNextCastSpell on some setups
 	updateRate = 0.12,
@@ -127,6 +129,7 @@ NS.defaults = {
 	avadaSpacing = 4,
 	avadaOffsetY = -10,
 	avadaShowBorder = true,
+	avadaBorderStyle = "classic", -- "classic", "dark"
 	avadaIndices = {}, -- Character specID -> profileIndex
 	avadaProfiles = {}, -- Character/Account specID -> { [index] = "dataString" }
 }
@@ -178,6 +181,7 @@ NS.FontList = {
 -- Hekili-style Data Structures
 NS.Hotkeys = {}
 NS.UpdatedHotkeys = {}
+NS.keybindCache = {}
 NS.WatchUnits = {}
 NS.WatchTypes = {}
 NS.ItemToAbility = {

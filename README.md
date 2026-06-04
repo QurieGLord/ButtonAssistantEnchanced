@@ -8,72 +8,82 @@
   <img src="docs/demo.gif" alt="Button Assistant Enchanced gameplay demo">
 </p>
 
-Hey there! 🍻
+**Button Assistant Enchanced** is a polished visual companion for Blizzard's Assisted Combat feature in modern World of Warcraft Retail. It gives the default recommendation system the kind of readable, responsive, and customizable feedback that makes relaxed gameplay feel smooth instead of vague.
 
-**Button Assistant Enchanced** is a standalone, lightweight WoW Retail addon built to upgrade Blizzard’s default Assisted Combat feature. If you've ever tried using the default assistant and found it a bit too quiet, vague, or just plain boring to look at during a chaotic fight, this addon is here to save the day.
+It is built for players who want to lean back, enjoy the fight, maybe embrace a little beer-friendly gameplay, and still understand exactly what the assistant is suggesting, what is on cooldown, and when a proc deserves attention.
 
-It transforms the recommended ability into a clean, highly configurable button that sits exactly where you want it. Whether you are running high keys or just chilling with a cold beer in one hand and your mouse in the other, this addon makes sure you always know what to press next without staring at your action bars.
+## Highlights
 
-## What It Does (Without the Boring Stuff)
-
-We kept it clean and pretty, not like a cockpit dashboard:
-
-- **Clear Recommendations:** The next recommended ability is displayed right in your face as a neat, customizable button.
-- **Readable Cooldowns:** Smooth, combat-safe cooldown sweeps and countdowns (including Global Cooldowns) so you aren't guessing when a spell is ready.
-- **Keybind Display:** Directly pulls and shows the keybinds from your action bars. No memory tests required.
-- **Visual Juice:** Juicy proc highlights (standard glow, focus glow, or custom line sweep), plus subtle button bounce/pulse animations when a big cooldown becomes ready.
-- **Range & Usability Checks:** The button tints itself when you're out of range or lacking resources, saving you from useless key-mashing.
-- **Avada Trackers:** Compact secondary tracker icons below the main button to keep an eye on extra cooldowns.
-- **Cozy In-Game Settings:** Easy config panel to tweak layouts, scales, colors, and effects to match your UI.
+- A clean recommendation button for Blizzard Assisted Combat.
+- Combat-safe cooldown sweep and countdown handling for GCD and real spell cooldowns.
+- Optional keybind display pulled from your action bars.
+- Proc feedback with Blizzard-style glow, a minimal focus glow, or a custom sweep-line glow.
+- Ready and cooldown-finished feedback through short flash, pulse, and bounce effects.
+- Range and usability tinting for quick at-a-glance decisions.
+- Avada Tracker icons for compact cooldown awareness below the main button.
+- In-game settings organized by layout, cooldowns, feedback, effects, logic, and tracker controls.
 
 ## Why It Exists
 
-Blizzard's Assisted Combat is a nice idea, but its presentation is just too easy to miss. Button Assistant Enchanced adds the missing rhythm. It doesn't play the game for you, but it sure makes casual grinding, leveling, and relaxing combat feel smooth, responsive, and nice to look at. Perfect for those laid-back evening gaming sessions.
+Blizzard's Assisted Combat is useful, but its presentation can feel too quiet for repeated moment-to-moment play. Button Assistant Enchanced keeps the assistant simple while adding stronger visual rhythm: a clear suggested spell, readable cooldown state, tasteful effects, and enough configuration to make it fit your UI.
+
+The goal is not to turn combat into a dashboard. The goal is to make the assistant feel like it belongs in a modern UI.
 
 ## Installation
 
 1. Download or clone this repository.
-2. Put the `ButtonAssistantEnchanced` folder into your WoW addons folder:
+2. Place the `ButtonAssistantEnchanced` folder into:
+
    ```text
    World of Warcraft/_retail_/Interface/AddOns/
    ```
-3. Restart the game or type `/reload` in the chat.
-4. Enable it in your AddOns list and grab a drink.
 
-## Quick Commands
+3. Restart the game or run `/reload`.
+4. Enable **Button Assistant Enchanced** in the AddOns list.
 
-Type any of these to open the settings panel:
+## Commands
+
 ```text
+/buttonassistantenchanced
 /bae
 /baenchanced
-/buttonassistantenchanced
 ```
 
-Toggle the assistant on/off on the fly:
+Open the addon settings.
+
 ```text
 /bae toggle
 ```
 
-Open Avada Tracker settings:
-```text
-/baeavada
-```
+Toggle the assistant on or off.
 
-See if anything broke behind the scenes:
 ```text
 /bae logs
 ```
 
-## Settings Overview
+Show recent caught addon errors, if any.
 
-The options panel is split into neat tabs so you don't get lost:
-* **Main Button & Visibility:** Tweak the scale, borders, and set it to hide out of combat or while driving vehicles.
-* **Cooldowns & Keybinds:** Set up font sizes, range tint colors, and GCD behaviors.
-* **Effects & Procs:** Turn on/off the subtle bounce animations, customize your proc glow, and make the button flash when something is ready.
-* **Logic & Trackers:** Filter action-bar visibility and configure the compact Avada Trackers.
+```text
+/baeavada
+```
 
-## A Quick Note
+Open Avada Tracker configuration.
 
-This addon is tailored specifically for Retail's Assisted Combat and the modern Retail UI APIs. Classic clients or emulated servers won't have the required engine features, so keep it Retail-only!
+## Configuration
 
-Cheers! 🍺
+The settings panel is split into focused sections:
+
+- **Main Button**: size, scale, and border style.
+- **Visibility**: combat and out-of-combat opacity, combat-only display, vehicle hiding.
+- **Keybind Text**: keybind visibility, font style, and font size.
+- **Cooldowns & Feedback**: cooldown visuals, countdown text, GCD behavior, range and usability tinting.
+- **Effects - General**: shared effect behavior.
+- **Effects - Next Ready**: feedback when the recommendation changes to a ready spell.
+- **Effects - Cooldown Ready**: feedback when the current recommendation becomes ready.
+- **Effects - Proc Highlight**: persistent proc glow style and proc-start feedback.
+- **Recommendation Logic**: action-bar visibility filtering.
+- **Avada Tracker**: compact tracker layout, border style, and display controls.
+
+## Notes
+
+Button Assistant Enchanced is designed for Retail Assisted Combat and current Retail UI APIs. Classic clients and private/emulated environments are not expected to provide the same behavior.

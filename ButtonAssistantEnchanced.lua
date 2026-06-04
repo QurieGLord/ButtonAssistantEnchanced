@@ -377,9 +377,11 @@ end
 local clean_enabled = true
 local clean_buttonSize = 40
 local clean_showKeybind = true
+local clean_keybindFont = "Numeric"
 local clean_keybindFontSize = 12
 local clean_showCooldown = true
 local clean_showBorder = true
+local clean_borderStyle = "classic"
 local clean_customCooldownText = true
 local clean_cooldownFont = "Numeric"
 local clean_cooldownFontSize = 14
@@ -409,15 +411,18 @@ local clean_effectReadyPulseEnabled = true
 local clean_effectProcBounceEnabled = false
 local clean_effectProcFlashEnabled = false
 local clean_avadaEnabled = true
+local clean_avadaBorderStyle = "classic"
 
 function NS.SyncCleanSettings()
 	if not NS.db then return end
 	clean_enabled = NS.db.enabled
 	clean_buttonSize = NS.db.buttonSize or 40
 	clean_showKeybind = NS.db.showKeybind
+	clean_keybindFont = NS.db.keybindFont or "Numeric"
 	clean_keybindFontSize = NS.db.keybindFontSize or 12
 	clean_showCooldown = NS.db.showCooldown
 	clean_showBorder = NS.db.showBorder
+	clean_borderStyle = NS.db.borderStyle or "classic"
 	clean_customCooldownText = NS.db.customCooldownText
 	clean_cooldownFont = NS.db.cooldownFont or "Numeric"
 	clean_cooldownFontSize = NS.db.cooldownFontSize or 14
@@ -452,6 +457,7 @@ function NS.SyncCleanSettings()
 	clean_effectProcBounceEnabled = NS.db.effectProcBounceEnabled
 	clean_effectProcFlashEnabled = NS.db.effectProcFlashEnabled
 	clean_avadaEnabled = NS.db.avadaEnabled
+	clean_avadaBorderStyle = NS.db.avadaBorderStyle or "classic"
 
 	-- Cache clean hasted GCD duration out-of-combat
 	if not InCombatLockdown() then
@@ -850,6 +856,30 @@ local function ApplyCustomCooldownText(fontString, remaining)
 	return true
 end
 
+local function ApplyConfiguredFont(fontString, fontKey, size, outline, fallbackFontObject)
+	if not fontString then
+		return
+	end
+
+	if type(fontKey) ~= "string" or not local_FontList or not local_FontList[fontKey] then
+		fontKey = "Numeric"
+	end
+
+	local fontVal = local_FontList and local_FontList[fontKey] or fallbackFontObject or "NumberFontNormal"
+	size = size or 12
+	outline = outline or "OUTLINE"
+
+	if type(fontVal) == "string" and fontVal:find("Interface\\") then
+		fontString:SetFont(fontVal, size, outline)
+	else
+		fontString:SetFontObject(fontVal or fallbackFontObject or "NumberFontNormal")
+		local customPath = fontString:GetFont()
+		if customPath then
+			fontString:SetFont(customPath, size, outline)
+		end
+	end
+end
+
 local function ApplyCooldownCountdownFont(cooldownFrame)
 	if not cooldownFrame or not cooldownFrame.GetCountdownFontString then
 		return
@@ -860,24 +890,7 @@ local function ApplyCooldownCountdownFont(cooldownFrame)
 		return
 	end
 
-	local fontKey = clean_cooldownFont
-	if type(fontKey) ~= "string" or not local_FontList or not local_FontList[fontKey] then
-		fontKey = "Numeric"
-	end
-
-	local fontVal = local_FontList and local_FontList[fontKey] or "NumberFontNormal"
-	local size = clean_cooldownFontSize or 14
-	local outline = clean_cooldownFontOutline or "OUTLINE"
-
-	if type(fontVal) == "string" and fontVal:find("Interface\\") then
-		fontString:SetFont(fontVal, size, outline)
-	else
-		fontString:SetFontObject(fontVal or "NumberFontNormal")
-		local customPath = fontString:GetFont()
-		if customPath then
-			fontString:SetFont(customPath, size, outline)
-		end
-	end
+	ApplyConfiguredFont(fontString, clean_cooldownFont, clean_cooldownFontSize or 14, clean_cooldownFontOutline or "OUTLINE", "NumberFontNormal")
 end
 
 local function TryGetDurationObject(api, spellID)
@@ -1232,6 +1245,7 @@ local function EnsureFocusPulse(button)
 	if not button then
 		return nil
 	end
+
 	if button.focusPulse then
 		return button.focusPulse
 	end
@@ -1246,10 +1260,27 @@ local function EnsureFocusPulse(button)
 	f.wash:SetAllPoints()
 	f.wash:SetBlendMode("ADD")
 
+	f.sheenGlow = f:CreateTexture(nil, "OVERLAY")
+	f.sheenGlow:SetTexture("Interface\\Buttons\\WHITE8X8")
+	f.sheenGlow:SetBlendMode("ADD")
+	f.sheenGlow:Hide()
+	if f.sheenGlow.SetRotation then
+		f.sheenGlow:SetRotation(-0.42)
+	end
+
+	f.sheen = f:CreateTexture(nil, "OVERLAY")
+	f.sheen:SetTexture("Interface\\Buttons\\WHITE8X8")
+	f.sheen:SetBlendMode("ADD")
+	f.sheen:Hide()
+	if f.sheen.SetRotation then
+		f.sheen:SetRotation(-0.42)
+	end
+
 	local function edge()
 		local tex = f:CreateTexture(nil, "OVERLAY")
 		tex:SetTexture("Interface\\Buttons\\WHITE8X8")
 		tex:SetBlendMode("ADD")
+		tex:Hide()
 		return tex
 	end
 
@@ -1270,31 +1301,100 @@ local function EnsureFocusPulse(button)
 	f.right:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
 	f.right:SetWidth(2)
 
-	f.anim = f:CreateAnimationGroup()
-	f.anim:SetToFinalAlpha(true)
+	local function setHold(self, alpha)
+		local r, g, b = self.glowR or 1, self.glowG or 1, self.glowB or 1
+		self.wash:SetVertexColor(r, g, b, 0.075 * alpha)
+		self.top:SetVertexColor(r, g, b, 0.38 * alpha)
+		self.bottom:SetVertexColor(r, g, b, 0.20 * alpha)
+		self.left:SetVertexColor(r, g, b, 0.24 * alpha)
+		self.right:SetVertexColor(r, g, b, 0.24 * alpha)
+		self.wash:Show()
+		self.top:Show()
+		self.bottom:Show()
+		self.left:Show()
+		self.right:Show()
+	end
 
-	local scale = f.anim:CreateAnimation("Scale")
-	scale:SetScale(1.10, 1.10)
-	scale:SetDuration(0.18)
-	scale:SetSmoothing("OUT")
-	scale:SetOrder(1)
+	local function positionSheen(self, progress, alpha)
+		local width = self:GetWidth()
+		local height = self:GetHeight()
+		if not width or width <= 1 or not height or height <= 1 then
+			return
+		end
 
-	local alpha = f.anim:CreateAnimation("Alpha")
-	alpha:SetFromAlpha(0.72)
-	alpha:SetToAlpha(0)
-	alpha:SetDuration(0.20)
-	alpha:SetSmoothing("OUT")
-	alpha:SetOrder(1)
+		local r, g, b = self.glowR or 1, self.glowG or 1, self.glowB or 1
+		local x = -width * 0.28 + width * 1.56 * progress
+		self.sheenGlow:ClearAllPoints()
+		self.sheenGlow:SetSize(math.max(18, width * 0.34), height * 1.40)
+		self.sheenGlow:SetPoint("CENTER", self, "LEFT", x, 0)
+		self.sheenGlow:SetVertexColor(r, g, b, 0.16 * alpha)
+		self.sheenGlow:Show()
 
-	f.anim:SetScript("OnFinished", function(self)
-		local parent = self:GetParent()
-		parent:SetScale(1)
-		parent:Hide()
+		self.sheen:ClearAllPoints()
+		self.sheen:SetSize(math.max(5, width * 0.075), height * 1.24)
+		self.sheen:SetPoint("CENTER", self, "LEFT", x, 0)
+		self.sheen:SetVertexColor(1, 1, 1, 0.42 * alpha)
+		self.sheen:Show()
+	end
+
+	f:SetScript("OnUpdate", function(self)
+		local now = GetTime()
+		if self.mode == "sheen" then
+			local progress = (now - (self.startTime or now)) / (self.sheenDuration or 0.34)
+			if progress >= 1 then
+				self.sheen:Hide()
+				self.sheenGlow:Hide()
+				if self.persistent then
+					self.mode = "settle"
+					self.settleStart = now
+					self.settleDuration = self.settleDuration or 0.16
+					self:SetScale(1)
+					setHold(self, 0.75)
+				else
+					self.mode = "fade"
+					self.fadeStart = now
+				end
+			else
+				local alpha = 0.55 + 0.45 * math.sin(math.pi * progress)
+				self:SetScale(1)
+				setHold(self, 0.24 + 0.50 * progress)
+				positionSheen(self, progress, alpha)
+			end
+		elseif self.mode == "settle" then
+			local progress = (now - (self.settleStart or now)) / (self.settleDuration or 0.16)
+			if progress >= 1 then
+				self.mode = "hold"
+				self:SetScale(1.025)
+				setHold(self, 1)
+			else
+				local expansion = 1 + 0.025 * progress
+				self:SetScale(expansion)
+				setHold(self, 0.75 + 0.25 * progress)
+			end
+			self.sheen:Hide()
+			self.sheenGlow:Hide()
+		elseif self.mode == "fade" then
+			local progress = (now - (self.fadeStart or now)) / (self.fadeDuration or 0.14)
+			if progress >= 1 then
+				self:Hide()
+				self.mode = nil
+				self:SetScale(1)
+			else
+				local alpha = 1 - progress
+				self:SetScale(1)
+				setHold(self, 0.45 * alpha)
+				self.sheen:Hide()
+				self.sheenGlow:Hide()
+			end
+		elseif self.mode == "hold" then
+			self:SetScale(1.025)
+			setHold(self, 1)
+			self.sheen:Hide()
+			self.sheenGlow:Hide()
+		end
 	end)
-	f.anim:SetScript("OnStop", function(self)
-		local parent = self:GetParent()
-		parent:SetScale(1)
-	end)
+
+	f.setHold = setHold
 
 	button.focusPulse = f
 	return f
@@ -1307,27 +1407,29 @@ local function TriggerFocusPulse(button, colorName, fallbackName)
 	end
 
 	local rgb = GetGlowColorRGB(colorName, fallbackName)
-	f.wash:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.18)
-	f.top:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.95)
-	f.bottom:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.95)
-	f.left:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.95)
-	f.right:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.95)
-	f:SetScale(0.94)
+	f.glowR, f.glowG, f.glowB = rgb[1], rgb[2], rgb[3]
+	f.persistent = false
+	f.mode = "sheen"
+	f.startTime = GetTime()
+	f.sheenDuration = 0.28
+	f.fadeDuration = 0.14
 	f:SetAlpha(1)
 	f:Show()
-	if f.anim:IsPlaying() then
-		f.anim:Stop()
-	end
-	f.anim:Play()
 end
 
 local function HideFocusPulse(button)
 	if button and button.focusPulse then
-		if button.focusPulse.anim and button.focusPulse.anim:IsPlaying() then
-			button.focusPulse.anim:Stop()
+		local f = button.focusPulse
+		f.mode = nil
+		f.persistent = nil
+		if f.sheen then
+			f.sheen:Hide()
 		end
-		button.focusPulse:Hide()
-		button.focusPulse:SetScale(1)
+		if f.sheenGlow then
+			f.sheenGlow:Hide()
+		end
+		f:Hide()
+		f:SetScale(1)
 	end
 end
 
@@ -1801,7 +1903,7 @@ local function HideBlizzardProcGlow(button)
 	end
 end
 
-local function ShowProcFocusGlow(button, colorName, fallbackName)
+local function ShowProcFocusGlow(button, colorName, fallbackName, restart)
 	if not button then
 		return
 	end
@@ -1811,17 +1913,21 @@ local function ShowProcFocusGlow(button, colorName, fallbackName)
 	end
 
 	local rgb = GetGlowColorRGB(colorName, fallbackName)
-	f.wash:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.10)
-	f.top:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.75)
-	f.bottom:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.75)
-	f.left:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.75)
-	f.right:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.75)
-	if f.anim:IsPlaying() then
-		f.anim:Stop()
-	end
+	f.glowR, f.glowG, f.glowB = rgb[1], rgb[2], rgb[3]
+	f.persistent = true
 	f:SetScale(1)
-	f:SetAlpha(0.7)
+	f:SetAlpha(1)
 	f:Show()
+
+	if restart or not f.mode or f.mode == "fade" then
+		f.mode = "sheen"
+		f.startTime = GetTime()
+		f.sheenDuration = 0.34
+		f.settleDuration = 0.16
+		f.fadeDuration = 0.14
+	elseif f.setHold then
+		f:setHold(1)
+	end
 end
 
 local function HideProcEffects(button)
@@ -1897,18 +2003,7 @@ local function OnButtonUpdate(self, elapsed)
 			end
 		end
 
-			-- 3. Minimal proc focus pulse, only when selected as the active proc style.
-			if self.focusPulse and self.focusPulse:IsShown() and self.procGlowStyle == "focusPulse" then
-				local pulse = 0.58 + 0.12 * math.sin(now * 5.5)
-				local r, g, b = self.glowR or 1, self.glowG or 1, self.glowB or 1
-				self.focusPulse.wash:SetVertexColor(r, g, b, 0.08 * pulse)
-				self.focusPulse.top:SetVertexColor(r, g, b, 0.72 * pulse)
-				self.focusPulse.bottom:SetVertexColor(r, g, b, 0.72 * pulse)
-				self.focusPulse.left:SetVertexColor(r, g, b, 0.72 * pulse)
-				self.focusPulse.right:SetVertexColor(r, g, b, 0.72 * pulse)
-			end
-
-		-- 4. Throttled UI & Cooldown Visual Update (Runs every 0.05 seconds / 20 FPS)
+			-- 3. Throttled UI & Cooldown Visual Update (Runs every 0.05 seconds / 20 FPS)
 		self.timeSinceLastUpdate = (self.timeSinceLastUpdate or 0) + elapsed
 		if self.timeSinceLastUpdate >= 0.05 then
 			self.timeSinceLastUpdate = 0
@@ -1920,7 +2015,7 @@ local function OnButtonUpdate(self, elapsed)
 			UpdateAvada()
 		end
 
-		-- 5. Out of combat background cooldown caching (runs every 1.0 second)
+			-- 4. Out of combat background cooldown caching (runs every 1.0 second)
 		if not InCombatLockdown() then
 			self.timeSinceLastCacheScan = (self.timeSinceLastCacheScan or 0) + elapsed
 			if self.timeSinceLastCacheScan >= 1.0 then
@@ -1929,7 +2024,7 @@ local function OnButtonUpdate(self, elapsed)
 			end
 		end
 
-		-- 6. Custom Cooldown countdown text (runs every frame for smooth tick-down)
+			-- 5. Custom Cooldown countdown text (runs every frame for smooth tick-down)
 		local inGCD = not clean_ignoreGCD and gcdStartTime + gcdDuration > now
 		if clean_customCooldownText and self.spellID and not inGCD then
 			local remaining = GetCooldownRemainingForText(self.spellID)
@@ -1945,8 +2040,113 @@ local function OnButtonUpdate(self, elapsed)
 			end
 			self.cooldown:SetHideCountdownNumbers(false)
 		end
-		end)
+	end)
+end
+
+local function EnsureDarkBorder(button)
+	if not button then
+		return nil
 	end
+	if button.darkBorder then
+		return button.darkBorder
+	end
+
+	local f = NS.CreateFrame("Frame", nil, button)
+	f:SetFrameLevel(button:GetFrameLevel() + 6)
+	f:Hide()
+
+	local function makeLine()
+		local tex = f:CreateTexture(nil, "OVERLAY")
+		tex:SetTexture("Interface\\Buttons\\WHITE8X8")
+		return tex
+	end
+
+	f.outerTop = makeLine()
+	f.outerBottom = makeLine()
+	f.outerLeft = makeLine()
+	f.outerRight = makeLine()
+	f.innerTop = makeLine()
+	f.innerBottom = makeLine()
+	f.innerLeft = makeLine()
+	f.innerRight = makeLine()
+
+	button.darkBorder = f
+	return f
+end
+
+local function PositionLine(tex, parent, side, inset, thickness)
+	tex:ClearAllPoints()
+	if side == "TOP" then
+		tex:SetPoint("TOPLEFT", parent, "TOPLEFT", inset, -inset)
+		tex:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -inset, -inset)
+		tex:SetHeight(thickness)
+	elseif side == "BOTTOM" then
+		tex:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", inset, inset)
+		tex:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -inset, inset)
+		tex:SetHeight(thickness)
+	elseif side == "LEFT" then
+		tex:SetPoint("TOPLEFT", parent, "TOPLEFT", inset, -inset)
+		tex:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", inset, inset)
+		tex:SetWidth(thickness)
+	else
+		tex:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -inset, -inset)
+		tex:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -inset, inset)
+		tex:SetWidth(thickness)
+	end
+end
+
+local function ApplyDarkBorder(button, size)
+	local f = EnsureDarkBorder(button)
+	if not f then
+		return
+	end
+
+	local target = button.icon or button
+	f:ClearAllPoints()
+	f:SetPoint("TOPLEFT", target, "TOPLEFT", -1, 1)
+	f:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 1, -1)
+	f:SetFrameLevel(button:GetFrameLevel() + 6)
+
+	local outer = math.max(1, math.floor((size or 40) / 32 + 0.5))
+	local inner = 1
+	PositionLine(f.outerTop, f, "TOP", 0, outer)
+	PositionLine(f.outerBottom, f, "BOTTOM", 0, outer)
+	PositionLine(f.outerLeft, f, "LEFT", 0, outer)
+	PositionLine(f.outerRight, f, "RIGHT", 0, outer)
+	PositionLine(f.innerTop, f, "TOP", outer, inner)
+	PositionLine(f.innerBottom, f, "BOTTOM", outer, inner)
+	PositionLine(f.innerLeft, f, "LEFT", outer, inner)
+	PositionLine(f.innerRight, f, "RIGHT", outer, inner)
+
+	f.outerTop:SetVertexColor(0.015, 0.016, 0.018, 0.98)
+	f.outerBottom:SetVertexColor(0.015, 0.016, 0.018, 0.98)
+	f.outerLeft:SetVertexColor(0.015, 0.016, 0.018, 0.98)
+	f.outerRight:SetVertexColor(0.015, 0.016, 0.018, 0.98)
+	f.innerTop:SetVertexColor(0.20, 0.22, 0.24, 0.62)
+	f.innerBottom:SetVertexColor(0.04, 0.045, 0.05, 0.72)
+	f.innerLeft:SetVertexColor(0.12, 0.13, 0.15, 0.58)
+	f.innerRight:SetVertexColor(0.04, 0.045, 0.05, 0.72)
+	f:Show()
+end
+
+local function ApplyIconBorderStyle(button, size, showBorder, style)
+	if not button then
+		return
+	end
+
+	local useDark = showBorder and style == "dark"
+	if button.border then
+		local borderSize = (size or 40) * 46 / 40
+		button.border:SetSize(borderSize, borderSize)
+		button.border:SetShown(showBorder and not useDark)
+	end
+
+	if useDark then
+		ApplyDarkBorder(button, size)
+	elseif button.darkBorder then
+		button.darkBorder:Hide()
+	end
+end
 
 local function CreateSuggestionButton(parent)
 	local b = NS.CreateFrame("Frame", nil, parent, "BackdropTemplate")
@@ -2057,11 +2257,7 @@ function NS.UpdateAvadaLayout()
 		icon:ClearAllPoints()
 		icon:SetPoint("LEFT", f, "LEFT", (i - 1) * (size + spacing), 0)
 
-		if icon.border then
-			local borderSize = size * 46 / 40 -- Maintain same ratio as main button
-			icon.border:SetSize(borderSize, borderSize)
-			icon.border:SetShown(showBorder)
-		end
+		ApplyIconBorderStyle(icon, size, showBorder, NS.db.avadaBorderStyle or "classic")
 
 		icon:SetShown(NS.db.avadaEnabled)
 	end
@@ -2081,35 +2277,15 @@ function NS.UpdateLayout()
 	b:ClearAllPoints()
 	b:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
 
-	-- Update Border Size (approx 1.15 ratio to cover edges)
-	if b.border then
-		local borderSize = size * 46 / 40
-		b.border:SetSize(borderSize, borderSize)
-		-- Show/Hide border based on settings
-		b.border:SetShown(NS.db.showBorder)
-	end
+	ApplyIconBorderStyle(b, size, NS.db.showBorder, NS.db.borderStyle or "classic")
 
-	-- Update Font Size
-	local fontPath, _, fontFlags = b.hotkey:GetFont()
-	b.hotkey:SetFont(fontPath, NS.db.keybindFontSize or 12, fontFlags)
+	-- Update keybind text font and size
+	ApplyConfiguredFont(b.hotkey, NS.db.keybindFont or "Numeric", NS.db.keybindFontSize or 12, "OUTLINE", "NumberFontNormalSmall")
 
 	-- Update custom cooldown text font and size
 	if b.customCooldownText then
-		local fontKey = NS.db.cooldownFont
-		if type(fontKey) ~= "string" or not local_FontList[fontKey] then
-			fontKey = "Numeric"
+			ApplyConfiguredFont(b.customCooldownText, NS.db.cooldownFont or "Numeric", NS.db.cooldownFontSize or 14, NS.db.cooldownFontOutline or "OUTLINE", "NumberFontNormal")
 		end
-		local fontVal = local_FontList[fontKey] or "NumberFontNormal"
-		if fontVal:find("Interface\\") then
-			b.customCooldownText:SetFont(fontVal, NS.db.cooldownFontSize or 14, NS.db.cooldownFontOutline or "OUTLINE")
-		else
-			b.customCooldownText:SetFontObject(fontVal)
-			local customPath, _, _ = b.customCooldownText:GetFont()
-			if customPath then
-				b.customCooldownText:SetFont(customPath, NS.db.cooldownFontSize or 14, NS.db.cooldownFontOutline or "OUTLINE")
-			end
-		end
-	end
 
 	-- Sync Settings Copy
 	NS.SyncCleanSettings()
@@ -2348,36 +2524,37 @@ function UpdateButton(b, spellID)
 					TriggerButtonTransitionEffect(b, clean_effectProcFlashEnabled, clean_effectProcBounceEnabled, false, clean_glowProcColor, "White")
 				end
 
-			if effectsAllowed and isProc and clean_glowProcEnabled then
-				local procRGB = GetGlowColorRGB(clean_glowProcColor, "White")
-				b.glowR, b.glowG, b.glowB = procRGB[1], procRGB[2], procRGB[3]
+				if effectsAllowed and isProc and clean_glowProcEnabled then
+					local procRGB = GetGlowColorRGB(clean_glowProcColor, "White")
+					b.glowR, b.glowG, b.glowB = procRGB[1], procRGB[2], procRGB[3]
+					local procGlowRestart = changed or b.lastProc ~= true or b.procGlowStyle ~= clean_glowProcType
 
-				if clean_glowProcType == "focusPulse" then
-					HideProcSweepGlow(b)
-					HideBlizzardProcGlow(b)
-					ShowProcFocusGlow(b, clean_glowProcColor, "White")
-					b.procGlowStyle = "focusPulse"
-				elseif clean_glowProcType == "none" then
-					HideProcEffects(b)
-				elseif clean_glowProcType == "sweepBorder" then
-					HideBlizzardProcGlow(b)
-					HideFocusPulse(b)
-					if ShowProcSweepGlow(b, changed or b.lastProc ~= true or b.procGlowStyle ~= "sweepBorder", clean_glowProcColor, "White") then
-						b.procGlowStyle = "sweepBorder"
-					else
-						ShowProcFocusGlow(b, clean_glowProcColor, "White")
+					if clean_glowProcType == "focusPulse" then
+						HideProcSweepGlow(b)
+						HideBlizzardProcGlow(b)
+						ShowProcFocusGlow(b, clean_glowProcColor, "White", procGlowRestart)
 						b.procGlowStyle = "focusPulse"
-					end
-				else
-					HideProcSweepGlow(b)
-					HideFocusPulse(b)
-					if ShowBlizzardProcGlow(b, changed or b.lastProc ~= true or b.procGlowStyle ~= "blizzardProc") then
-						b.procGlowStyle = "blizzardProc"
+					elseif clean_glowProcType == "none" then
+						HideProcEffects(b)
+					elseif clean_glowProcType == "sweepBorder" then
+						HideBlizzardProcGlow(b)
+						if ShowProcSweepGlow(b, changed or b.lastProc ~= true or b.procGlowStyle ~= "sweepBorder", clean_glowProcColor, "White") then
+							HideFocusPulse(b)
+							b.procGlowStyle = "sweepBorder"
+						else
+							ShowProcFocusGlow(b, clean_glowProcColor, "White", changed or b.lastProc ~= true or b.procGlowStyle ~= "focusPulse")
+							b.procGlowStyle = "focusPulse"
+						end
 					else
-						ShowProcFocusGlow(b, clean_glowProcColor, "White")
-						b.procGlowStyle = "focusPulse"
+						HideProcSweepGlow(b)
+						if ShowBlizzardProcGlow(b, changed or b.lastProc ~= true or b.procGlowStyle ~= "blizzardProc") then
+							HideFocusPulse(b)
+							b.procGlowStyle = "blizzardProc"
+						else
+							ShowProcFocusGlow(b, clean_glowProcColor, "White", changed or b.lastProc ~= true or b.procGlowStyle ~= "focusPulse")
+							b.procGlowStyle = "focusPulse"
+						end
 					end
-				end
 			else
 				HideProcEffects(b)
 			end
@@ -2633,16 +2810,76 @@ addonFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 addonFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 
 local allTimer
-local function DelayedUpdateKeybindings()
+local keybindRefreshPending
+
+local function PrimeKeybindCacheForSpell(spellID)
+	if not spellID or not local_GetKeyBindForSpellID then
+		return
+	end
+	pcall(local_GetKeyBindForSpellID, spellID)
+end
+
+local function PrimeDisplayedKeybindCache()
+	if InCombatLockdown() then
+		keybindRefreshPending = true
+		return
+	end
+
+	PrimeKeybindCacheForSpell(cleanRecommendedSpellID)
+	if frame and frame.button then
+		PrimeKeybindCacheForSpell(frame.button.spellID)
+	end
+
+	if NS.C_AssistedCombat_GetRotationSpells then
+		local ok, spells = pcall(NS.C_AssistedCombat_GetRotationSpells)
+		if ok and spells then
+			for _, spellID in ipairs(spells) do
+				PrimeKeybindCacheForSpell(spellID)
+			end
+		end
+	end
+
+	if NS.C_AssistedCombat_GetActionSpell then
+		local ok, spellID = pcall(NS.C_AssistedCombat_GetActionSpell)
+		if ok then
+			PrimeKeybindCacheForSpell(spellID)
+		end
+	end
+
+	local list = local_GetAvadaTargetList and local_GetAvadaTargetList()
+	if list then
+		for _, data in ipairs(list) do
+			if data and data.spellID then
+				PrimeKeybindCacheForSpell(data.spellID)
+			end
+		end
+	end
+end
+
+local function DelayedUpdateKeybindings(wipeKeybindCache)
 	if allTimer then
 		allTimer:Cancel()
 	end
 	ClearActionSlotCache()
+	if wipeKeybindCache then
+		if InCombatLockdown() then
+			keybindRefreshPending = true
+		elseif NS.WipeKeybindCache then
+			NS.WipeKeybindCache()
+		end
+	end
 	allTimer = NS.C_Timer_After(0.2, function()
+		if not InCombatLockdown() and keybindRefreshPending then
+			if NS.WipeKeybindCache then
+				NS.WipeKeybindCache()
+			end
+			keybindRefreshPending = nil
+		end
 		NS.ReadKeybindings()
 		NS.UpdateNow()
 		ScanAllCooldowns() -- Scan and cache cooldowns after everything is settled!
 		if not InCombatLockdown() then
+			PrimeDisplayedKeybindCache()
 			if cleanRecommendedSpellID then
 				GetCachedActionSlotsForSpell(cleanRecommendedSpellID)
 			end
@@ -2727,7 +2964,7 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 
 			NS.UpdateLayout()
 			NS.UpdateVisibility() -- Call UpdateVisibility after layout
-			DelayedUpdateKeybindings() -- Ensure hotkeys are scanned after bars are ready
+				DelayedUpdateKeybindings(false) -- Ensure hotkeys are scanned after bars are ready
 			return
 		end
 
@@ -2778,7 +3015,7 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 				NS.RefreshAvadaCachedData()
 				NS.UpdateAvadaLayout()
 			end
-			DelayedUpdateKeybindings()
+				DelayedUpdateKeybindings(true)
 		end
 
 		-- Visibility & Regen Changes
@@ -2786,6 +3023,7 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 				NS.UpdateVisibility()
 				if event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_ENTERING_WORLD" then
 					ScanAllCooldowns() -- Sync and cache all cooldowns when leaving combat or entering world!
+					DelayedUpdateKeybindings(false)
 				end
 		end
 

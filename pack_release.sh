@@ -1,48 +1,72 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# Exit immediately if a command exits with a non-zero status
-set -e
-
-# Setup colors for cozy CLI feedback
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Determine script directory and details
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADDON_NAME="$(basename "$SCRIPT_DIR")"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
-ZIP_NAME="${ADDON_NAME}.zip"
-OUTPUT_ZIP="${PARENT_DIR}/${ZIP_NAME}"
+TOC_FILE="${SCRIPT_DIR}/${ADDON_NAME}.toc"
 
-echo -e "${BLUE}🍺 Preparing release package for ${YELLOW}${ADDON_NAME}${NC}..."
-
-# Check if zip is installed
-if ! command -v zip &> /dev/null; then
-    echo -e "${RED}Error: 'zip' utility is not installed. Grab a brew and install it first.${NC}"
-    exit 1
+if ! command -v zip >/dev/null 2>&1; then
+	echo -e "${RED}Error: 'zip' utility is not installed.${NC}" >&2
+	exit 1
 fi
 
-# Clean up any existing old zip in the output directory
-if [ -f "$OUTPUT_ZIP" ]; then
-    echo -e "${YELLOW}Cleaning up old archive...${NC}"
-    rm -f "$OUTPUT_ZIP"
+VERSION="${1:-${VERSION:-}}"
+if [ -z "$VERSION" ]; then
+	if [ -f "$TOC_FILE" ]; then
+		VERSION="$(awk '/^## Version:/ { print $3; exit }' "$TOC_FILE")"
+	fi
 fi
 
-# Package the addon from the parent directory to keep folder structure
-echo -e "${BLUE}Zipping addon files (excluding git stuff and scripts)...${NC}"
+if [ -z "$VERSION" ]; then
+	echo -e "${RED}Error: unable to resolve addon version.${NC}" >&2
+	exit 1
+fi
+
+VERSION="${VERSION#v}"
+DIST_DIR="${DIST_DIR:-${SCRIPT_DIR}/dist}"
+ZIP_NAME="${ADDON_NAME}-${VERSION}.zip"
+OUTPUT_ZIP="${DIST_DIR}/${ZIP_NAME}"
+
+mkdir -p "$DIST_DIR"
+rm -f "$OUTPUT_ZIP"
+
+echo -e "${BLUE}Preparing ${YELLOW}${ADDON_NAME} ${VERSION}${BLUE} release package...${NC}"
+
 (
-    cd "$PARENT_DIR"
-    zip -r "$ZIP_NAME" "$ADDON_NAME" \
-        -x "$ADDON_NAME/.git*" \
-        -x "$ADDON_NAME/*/.git*" \
-        -x "$ADDON_NAME/pack_release.sh" \
-        -x "$ADDON_NAME/*.zip" \
-        -x "$ADDON_NAME/*.tgz" \
-        -x "$ADDON_NAME/*.tar.gz"
+	cd "$PARENT_DIR"
+	zip -r -q "$OUTPUT_ZIP" "$ADDON_NAME" \
+		-x "$ADDON_NAME/.git" \
+		-x "$ADDON_NAME/.git/*" \
+		-x "$ADDON_NAME/.gitignore" \
+		-x "$ADDON_NAME/.github" \
+		-x "$ADDON_NAME/.github/*" \
+		-x "$ADDON_NAME/docs" \
+		-x "$ADDON_NAME/docs/*" \
+		-x "$ADDON_NAME/dist" \
+		-x "$ADDON_NAME/dist/*" \
+		-x "$ADDON_NAME/pack_release.sh" \
+		-x "$ADDON_NAME/*.zip" \
+		-x "$ADDON_NAME/*.tgz" \
+		-x "$ADDON_NAME/*.tar.gz" \
+		-x "$ADDON_NAME/*.mp4" \
+		-x "$ADDON_NAME/*.webm" \
+		-x "$ADDON_NAME/*.gif" \
+		-x "$ADDON_NAME/Media/demo.gif" \
+		-x "$ADDON_NAME/Media/*.mp4" \
+		-x "$ADDON_NAME/Media/*.webm" \
+		-x "$ADDON_NAME/docs/*.mp4" \
+		-x "$ADDON_NAME/.DS_Store" \
+		-x "$ADDON_NAME/*/.DS_Store" \
+		-x "$ADDON_NAME/Thumbs.db" \
+		-x "$ADDON_NAME/*/Thumbs.db" \
+		-x "$ADDON_NAME/.luacheckcache"
 )
 
-echo -e "${GREEN}🍻 Cheers! Release archive created successfully:${NC}"
-echo -e "${YELLOW}${OUTPUT_ZIP}${NC}"
+echo -e "${GREEN}Release archive created:${NC} ${YELLOW}${OUTPUT_ZIP}${NC}"

@@ -199,14 +199,32 @@ function NS.GetKeyBindForSpellID(identifier)
 
 	-- Instant lookup from the database
 	local baseID = NS.FindBaseSpellByID(identifier) or identifier
+	local cache = NS.keybindCache
+	local identifierKey = NS.tostring(identifier)
+	local baseKey = NS.tostring(baseID)
+	if cache then
+		local cached = cache[identifierKey] or cache[baseKey]
+		if cached and cached ~= "" then
+			return cached
+		end
+	end
+
 	local text = NS.GetBindingForAction(baseID) or NS.GetBindingForAction(identifier)
+	if text and text ~= "" and cache then
+		cache[identifierKey] = text
+		cache[baseKey] = text
+		return text
+	end
 
 	-- Fallback: Use Retail API to find the spell on bars if cache missed or empty.
 	-- Keep this out of combat; action-bar lookup can trip Midnight protected/taint paths.
 	if (not text or text == "") and NS.C_ActionBar_FindSpellActionButtons and not NS.InCombatLockdown() then
-		local slots = NS.C_ActionBar_FindSpellActionButtons(identifier)
-		if not slots or #slots == 0 then
-			slots = NS.C_ActionBar_FindSpellActionButtons(baseID)
+		local ok, slots = NS.pcall(NS.C_ActionBar_FindSpellActionButtons, identifier)
+		if not ok or not slots or #slots == 0 then
+			ok, slots = NS.pcall(NS.C_ActionBar_FindSpellActionButtons, baseID)
+			if not ok then
+				slots = nil
+			end
 		end
 
 		if slots and #slots > 0 then
@@ -228,13 +246,17 @@ function NS.GetKeyBindForSpellID(identifier)
 					bName = "ACTIONBUTTON" .. (1 + (slot - 73) % 12)
 				end
 
-				if bName then
-					local key = NS.GetBindingKey(bName)
-					if key and key ~= "" then
-						text = NS.improvedGetBindingText(key)
-						break
+					if bName then
+						local key = NS.GetBindingKey(bName)
+						if key and key ~= "" then
+							text = NS.improvedGetBindingText(key)
+							if cache then
+								cache[identifierKey] = text
+								cache[baseKey] = text
+							end
+							break
+						end
 					end
-				end
 			end
 		end
 	end
@@ -243,6 +265,10 @@ function NS.GetKeyBindForSpellID(identifier)
 end
 
 function NS.WipeKeybindCache()
+	if not NS.keybindCache then
+		NS.keybindCache = {}
+		return
+	end
 	for k in NS.pairs(NS.keybindCache) do
 		NS.keybindCache[k] = nil
 	end
@@ -423,10 +449,17 @@ function NS.GetAuraInfo(unit, spellID, filter)
 		if not aura then
 			break
 		end
-		if aura.spellId == spellID then
+
+		local ok, matches = NS.pcall(function()
+			return aura.spellId == spellID
+		end)
+		if ok and matches then
 			-- Strictly filter for player source to match NDui's "caster == 'player'" check
-			if aura.sourceUnit == "player" then
-				return aura, aura.points[1]
+			local sourceOK, fromPlayer = NS.pcall(function()
+				return aura.sourceUnit == "player"
+			end)
+			if sourceOK and fromPlayer then
+				return aura, aura.points and aura.points[1]
 			end
 		end
 	end

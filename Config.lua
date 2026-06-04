@@ -35,6 +35,36 @@ function NS.RegisterSettings()
 	-- The "Right" label is standard for showing values next to sliders
 	local labelRight = (MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label and MinimalSliderWithSteppersMixin.Label.Right) or 2
 
+	local function GetFontOptions()
+		local container = Settings.CreateControlTextContainer()
+		container:Add("Numeric", "Numeric (Default)")
+		container:Add("Standard", "Standard UI Font")
+		container:Add("Bold", "Header Bold Font")
+		container:Add("Expressive", "Expressive Shadowed")
+		container:Add("Large", "Large Shadowed")
+		container:Add("Expressway", "Expressway")
+		container:Add("Roboto Bold", "Roboto Bold")
+		container:Add("Denmark", "Denmark")
+		container:Add("Prototype", "Prototype")
+		container:Add("Zero Cool", "Zero Cool")
+		container:Add("Big Noodle", "Big Noodle Titling")
+		container:Add("Bangers", "Bangers")
+		container:Add("Alte Haas", "Alte Haas")
+		container:Add("Gotham Ultra", "Gotham Ultra")
+		container:Add("LifeCraft", "LifeCraft")
+		container:Add("Pepsi Modern", "Pepsi Modern")
+		container:Add("Zero Pixel", "Zero Pixel")
+		container:Add("Yikes", "Yikes")
+		return container:GetData()
+	end
+
+	local function GetBorderStyleOptions()
+		local container = Settings.CreateControlTextContainer()
+		container:Add("classic", "Classic Blizzard")
+		container:Add("dark", "Dark Minimal")
+		return container:GetData()
+	end
+
 	-- Button Size
 	local sizeSetting = Register("buttonSize", Settings.VarType.Number, "Button Size", 40, nil, function()
 		if NS.UpdateLayout then
@@ -54,6 +84,13 @@ function NS.RegisterSettings()
 		end
 	end)
 	Settings.CreateCheckbox(visualSubcat, borderSetting, "Toggle the Blizzard-style border around the button.")
+
+	local borderStyleSetting = Register("borderStyle", Settings.VarType.String, "Border Style", "classic", nil, function()
+		if NS.UpdateLayout then
+			NS.UpdateLayout()
+		end
+	end)
+	Settings.CreateDropdown(visualSubcat, borderStyleSetting, GetBorderStyleOptions, "Choose the visual style used when the main button border is shown.")
 
 	-- Scale
 	local scaleSetting = Register("scale", Settings.VarType.Number, "Scale", 1.0, nil, function()
@@ -117,6 +154,13 @@ function NS.RegisterSettings()
 	end)
 	Settings.CreateCheckbox(keybindSubcat, showKeybindSetting, "Show the keybind text on the button.")
 
+	local keybindFontSetting = Register("keybindFont", Settings.VarType.String, "Keybind Font Style", "Numeric", nil, function()
+		if NS.UpdateLayout then
+			NS.UpdateLayout()
+		end
+	end)
+	Settings.CreateDropdown(keybindSubcat, keybindFontSetting, GetFontOptions, "Select the font style for the keybind text.")
+
 	-- Keybind Font Size
 	local fontSizeSetting = Register("keybindFontSize", Settings.VarType.Number, "Keybind Font Size", 12, nil, function()
 		if NS.UpdateLayout then
@@ -156,29 +200,6 @@ function NS.RegisterSettings()
 	local cdFontSetting = Register("cooldownFont", Settings.VarType.String, "Countdown Font Style", "Numeric", nil, function()
 		if NS.UpdateLayout then NS.UpdateLayout() end
 	end)
-	local function GetFontOptions()
-		local container = Settings.CreateControlTextContainer()
-		container:Add("Numeric", "Numeric (Default)")
-		container:Add("Standard", "Standard UI Font")
-		container:Add("Bold", "Header Bold Font")
-		container:Add("Expressive", "Expressive Shadowed")
-		container:Add("Large", "Large Shadowed")
-		-- Custom NiceDamage fonts
-		container:Add("Expressway", "Expressway")
-		container:Add("Roboto Bold", "Roboto Bold")
-		container:Add("Denmark", "Denmark")
-		container:Add("Prototype", "Prototype")
-		container:Add("Zero Cool", "Zero Cool")
-		container:Add("Big Noodle", "Big Noodle Titling")
-		container:Add("Bangers", "Bangers")
-		container:Add("Alte Haas", "Alte Haas")
-		container:Add("Gotham Ultra", "Gotham Ultra")
-		container:Add("LifeCraft", "LifeCraft")
-		container:Add("Pepsi Modern", "Pepsi Modern")
-		container:Add("Zero Pixel", "Zero Pixel")
-		container:Add("Yikes", "Yikes")
-		return container:GetData()
-	end
 	Settings.CreateDropdown(cdRangeSubcat, cdFontSetting, GetFontOptions, "Select the font style for the custom cooldown text.")
 
 	-- Cooldown Font Size
@@ -391,6 +412,13 @@ function NS.RegisterSettings()
 		end
 	end)
 	Settings.CreateCheckbox(avadaSubcat, avadaBorderSetting, "Show a border around the Avada icons.")
+
+	local avadaBorderStyleSetting = Register("avadaBorderStyle", Settings.VarType.String, "Border Style", "classic", nil, function()
+		if NS.UpdateLayout then
+			NS.UpdateLayout()
+		end
+	end)
+	Settings.CreateDropdown(avadaSubcat, avadaBorderStyleSetting, GetBorderStyleOptions, "Choose the border style used by Avada tracker icons.")
 
 	Settings.RegisterAddOnCategory(category)
 	NS.SettingsCategory = category

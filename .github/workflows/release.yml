@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 1.0.0. Leave empty to use the TOC version."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package AddOn
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(awk '/^## Version:/ { print $3; exit }' ButtonAssistantEnchanced.toc)"
+          fi
+
+          VERSION="${VERSION#v}"
+          if [[ -z "$VERSION" ]]; then
+            echo "Unable to resolve release version." >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate TOC version
+        shell: bash
+        run: |
+          TOC_VERSION="$(awk '/^## Version:/ { print $3; exit }' ButtonAssistantEnchanced.toc)"
+          if [[ "$TOC_VERSION" != "${{ steps.version.outputs.version }}" ]]; then
+            echo "TOC version ($TOC_VERSION) does not match release version (${{ steps.version.outputs.version }})." >&2
+            exit 1
+          fi
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip
+
+      - name: Build release archive
+        run: ./pack_release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Extract release notes
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          awk -v version="$VERSION" '
+            $0 ~ "^## \\[" version "\\]" { capture = 1; next }
+            capture && /^## / { capture = 0 }
+            capture { print }
+          ' Changelog.md > dist/release-notes.md
+
+          if [[ ! -s dist/release-notes.md ]]; then
+            cp Changelog.md dist/release-notes.md
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ButtonAssistantEnchanced-${{ steps.version.outputs.version }}
+          path: dist/ButtonAssistantEnchanced-${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Button Assistant Enchanced ${{ steps.version.outputs.version }}
+          body_path: dist/release-notes.md
+          files: dist/ButtonAssistantEnchanced-${{ steps.version.outputs.version }}.zip
+          fail_on_unmatched_files: true
