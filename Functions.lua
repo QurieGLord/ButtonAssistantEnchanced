@@ -192,6 +192,79 @@ function NS.GetBindingForAction(key, display, i)
 	return output
 end
 
+function NS.GetBindingCommandForActionSlot(slot)
+	if not slot or slot <= 0 then
+		return nil
+	elseif slot <= 12 then
+		return "ACTIONBUTTON" .. slot
+	elseif slot <= 24 then
+		return "ACTIONBUTTON" .. (slot - 12)
+	elseif slot <= 36 then
+		return "MULTIACTIONBAR3BUTTON" .. (slot - 24)
+	elseif slot <= 48 then
+		return "MULTIACTIONBAR4BUTTON" .. (slot - 36)
+	elseif slot <= 60 then
+		return "MULTIACTIONBAR2BUTTON" .. (slot - 48)
+	elseif slot <= 72 then
+		return "MULTIACTIONBAR1BUTTON" .. (slot - 60)
+	elseif slot <= 132 then
+		return "ACTIONBUTTON" .. (1 + (slot - 73) % 12)
+	elseif slot <= 144 then
+		return "MULTIACTIONBAR5BUTTON" .. (slot - 132)
+	elseif slot <= 156 then
+		return "MULTIACTIONBAR6BUTTON" .. (slot - 144)
+	elseif slot <= 168 then
+		return "MULTIACTIONBAR7BUTTON" .. (slot - 156)
+	end
+
+	return nil
+end
+
+function NS.GetKeyBindForActionSlot(slot)
+	local command = NS.GetBindingCommandForActionSlot(slot)
+	if not command then
+		return nil
+	end
+
+	local key = NS.GetBindingKey(command)
+	if key and key ~= "" then
+		return NS.improvedGetBindingText(key)
+	end
+
+	return nil
+end
+
+function NS.WipeAssistantKeybindCache()
+	NS.assistantKeybindCache = nil
+end
+
+function NS.GetAssistantKeyBind()
+	if NS.assistantKeybindCache and NS.assistantKeybindCache ~= "" then
+		return NS.assistantKeybindCache
+	end
+	if NS.InCombatLockdown() or not NS.C_ActionBar_IsAssistedCombatAction then
+		return nil
+	end
+
+	for slot = 1, 168 do
+		local ok, isAssistant = NS.pcall(NS.C_ActionBar_IsAssistedCombatAction, slot)
+		if ok then
+			local compareOK, matches = NS.pcall(function()
+				return isAssistant == true
+			end)
+			if compareOK and matches then
+				local text = NS.GetKeyBindForActionSlot(slot)
+				if text and text ~= "" then
+					NS.assistantKeybindCache = text
+					return text
+				end
+			end
+		end
+	end
+
+	return nil
+end
+
 function NS.GetKeyBindForSpellID(identifier)
 	if not identifier then
 		return nil

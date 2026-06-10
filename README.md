@@ -16,11 +16,12 @@ It is built for players who want to lean back, enjoy the fight, maybe embrace a 
 
 - A clean recommendation button for Blizzard Assisted Combat.
 - Combat-safe cooldown sweep and countdown handling for GCD and real spell cooldowns.
+- Charge count and recharge feedback for abilities with multiple stacks.
 - Optional keybind display pulled from your action bars.
 - Proc feedback with Blizzard-style glow, a minimal focus glow, or a custom sweep-line glow.
 - Ready and cooldown-finished feedback through short flash, pulse, and bounce effects.
 - Range and usability tinting for quick at-a-glance decisions.
-- Avada Tracker icons for compact cooldown awareness, with optional countdown text.
+- Avada Tracker icons for compact cooldown awareness, with optional countdown text and ready feedback.
 - A lightweight layout editor for placing the main button and Avada Tracker with a grid, snap, and tidy row layouts.
 - In-game settings organized by layout, cooldowns, feedback, effects, logic, and tracker controls.
 
@@ -82,16 +83,16 @@ Open Avada Tracker configuration.
 The settings panel is split into focused sections:
 
 - **Layout Editor**: grid size and snap-to-grid behavior for the in-game layout mode.
-- **Main Button**: size, scale, and border style.
+- **Main Button**: size, scale, and border style, including classic, dark, and Classic Blizzard Dark options.
 - **Visibility**: combat and out-of-combat opacity, combat-only display, vehicle hiding.
 - **Keybind Text**: keybind visibility, font style, and font size.
 - **Cooldowns & Feedback**: cooldown visuals, countdown text, GCD behavior, range and usability tinting.
 - **Effects - General**: shared effect behavior.
 - **Effects - Next Ready**: feedback when the recommendation changes to a ready spell.
-- **Effects - Cooldown Ready**: feedback when the current recommendation becomes ready.
+- **Effects - Cooldown Ready**: feedback when the current recommendation or global cooldown becomes ready.
 - **Effects - Proc Highlight**: persistent proc glow style and proc-start feedback.
 - **Recommendation Logic**: action-bar visibility filtering.
-- **Avada Tracker**: compact tracker layout, scale, rows, columns, cooldown text, border style, and display controls.
+- **Avada Tracker**: compact tracker layout, scale, rows, columns, cooldown text, border style, ready feedback, and display controls.
 
 ## Notes
 

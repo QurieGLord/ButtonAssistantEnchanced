@@ -32,7 +32,7 @@ function NS.RegisterSettings()
 	local lockedSetting = Register("locked", Settings.VarType.Boolean, "Locked", false, "Lock the frame to prevent dragging.")
 	Settings.CreateCheckbox(category, lockedSetting, "Lock the suggestion button in place.")
 
-	local editSubcat = Settings.RegisterVerticalLayoutSubcategory(category, "Layout Editor")
+	local editSubcat, editLayout = Settings.RegisterVerticalLayoutSubcategory(category, "Layout Editor")
 
 	local function OpenLayoutEditorFromSettings()
 		if SettingsPanel then
@@ -54,12 +54,32 @@ function NS.RegisterSettings()
 		end
 	end
 
-	if Settings.CreateButton then
-		local ok = pcall(Settings.CreateButton, editSubcat, "Layout Editor", "Enter Edit Mode", OpenLayoutEditorFromSettings, "Close settings and edit the addon layout on the screen.")
-		if not ok then
-			pcall(Settings.CreateButton, editSubcat, "Enter Edit Mode", OpenLayoutEditorFromSettings, "Close settings and edit the addon layout on the screen.")
+	local function AddEditModeButton()
+		local tooltip = "Close settings and edit the addon layout on the screen."
+		if CreateSettingsButtonInitializer then
+			local initializer = CreateSettingsButtonInitializer("Enter Edit Mode", "Enter Edit Mode", OpenLayoutEditorFromSettings, tooltip, true)
+			local layout = editLayout
+			if not layout and SettingsPanel and SettingsPanel.GetLayout then
+				local ok, found = pcall(SettingsPanel.GetLayout, SettingsPanel, editSubcat)
+				if ok then
+					layout = found
+				end
+			end
+			if layout and layout.AddInitializer then
+				layout:AddInitializer(initializer)
+				return
+			end
+		end
+
+		if Settings.CreateButton then
+			local ok = pcall(Settings.CreateButton, editSubcat, "Layout Editor", "Enter Edit Mode", OpenLayoutEditorFromSettings, tooltip)
+			if not ok then
+				pcall(Settings.CreateButton, editSubcat, "Enter Edit Mode", OpenLayoutEditorFromSettings, tooltip)
+			end
 		end
 	end
+
+	AddEditModeButton()
 
 	local snapSetting = Register("editSnapToGrid", Settings.VarType.Boolean, "Snap to Grid", true, nil, function()
 		if NS.RefreshEditGrid then
@@ -108,6 +128,7 @@ function NS.RegisterSettings()
 	local function GetBorderStyleOptions()
 		local container = Settings.CreateControlTextContainer()
 		container:Add("classic", "Classic Blizzard")
+		container:Add("blizzardDark", "Classic Blizzard Dark")
 		container:Add("dark", "Dark Minimal")
 		return container:GetData()
 	end
@@ -194,19 +215,29 @@ function NS.RegisterSettings()
 	local keybindSubcat = Settings.RegisterVerticalLayoutSubcategory(category, "Keybind Text")
 
 	-- Show Keybind
-	local showKeybindSetting = Register("showKeybind", Settings.VarType.Boolean, "Show Keybinds", true, nil, function()
-		if NS.UpdateNow then
-			NS.UpdateNow()
-		end
-	end)
-	Settings.CreateCheckbox(keybindSubcat, showKeybindSetting, "Show the keybind text on the button.")
+		local showKeybindSetting = Register("showKeybind", Settings.VarType.Boolean, "Show Keybinds", true, nil, function()
+			if NS.UpdateNow then
+				NS.UpdateNow()
+			end
+		end)
+		Settings.CreateCheckbox(keybindSubcat, showKeybindSetting, "Show the keybind text on the button.")
 
-	local keybindFontSetting = Register("keybindFont", Settings.VarType.String, "Keybind Font Style", "Numeric", nil, function()
-		if NS.UpdateLayout then
-			NS.UpdateLayout()
-		end
-	end)
-	Settings.CreateDropdown(keybindSubcat, keybindFontSetting, GetFontOptions, "Select the font style for the keybind text.")
+		local assistantKeybindSetting = Register("keybindUseAssistantAction", Settings.VarType.Boolean, "Use Assistant Button Key", false, nil, function()
+			if NS.SyncCleanSettings then
+				NS.SyncCleanSettings()
+			end
+			if NS.UpdateNow then
+				NS.UpdateNow()
+			end
+		end)
+		Settings.CreateCheckbox(keybindSubcat, assistantKeybindSetting, "Show the key bound to the Assisted Combat action instead of the recommended spell's own action bar key.")
+
+		local keybindFontSetting = Register("keybindFont", Settings.VarType.String, "Keybind Font Style", "Numeric", nil, function()
+			if NS.UpdateLayout then
+				NS.UpdateLayout()
+			end
+		end)
+		Settings.CreateDropdown(keybindSubcat, keybindFontSetting, GetFontOptions, "Select the font style for the keybind text.")
 
 	-- Keybind Font Size
 	local fontSizeSetting = Register("keybindFontSize", Settings.VarType.Number, "Keybind Font Size", 12, nil, function()
@@ -353,8 +384,8 @@ function NS.RegisterSettings()
 		local flashSetting = Register("enableFlashOverlay", Settings.VarType.Boolean, "Next Ready Flash", true, nil, RefreshEffects)
 		Settings.CreateCheckbox(effectsNextReadySubcat, flashSetting, "Flash once when the recommendation changes to a ready spell.")
 
-		local nextPulseSetting = Register("effectNextReadyPulseEnabled", Settings.VarType.Boolean, "Next Ready Focus Pulse", true, nil, RefreshEffects)
-		Settings.CreateCheckbox(effectsNextReadySubcat, nextPulseSetting, "Play a short minimal focus pulse when the next recommendation is ready.")
+		local nextPulseSetting = Register("effectNextReadyPulseEnabled", Settings.VarType.Boolean, "Next Ready Pulse", true, nil, RefreshEffects)
+		Settings.CreateCheckbox(effectsNextReadySubcat, nextPulseSetting, "Play a short pulse when the next recommendation is ready.")
 
 		local bounceSetting = Register("enableBounceAnim", Settings.VarType.Boolean, "Next Ready Bounce", false, nil, RefreshEffects)
 		Settings.CreateCheckbox(effectsNextReadySubcat, bounceSetting, "Apply a short smooth scale pop when the recommendation changes to a ready spell.")
@@ -362,14 +393,29 @@ function NS.RegisterSettings()
 		local readyFlashSetting = Register("effectReadyFlashEnabled", Settings.VarType.Boolean, "Cooldown Finished Flash", true, nil, RefreshEffects)
 		Settings.CreateCheckbox(effectsCooldownReadySubcat, readyFlashSetting, "Flash once when the current spell leaves its own cooldown.")
 
-		local readyPulseSetting = Register("effectReadyPulseEnabled", Settings.VarType.Boolean, "Cooldown Finished Focus Pulse", true, nil, RefreshEffects)
-		Settings.CreateCheckbox(effectsCooldownReadySubcat, readyPulseSetting, "Play a short minimal focus pulse when the current spell becomes ready again.")
+		local readyPulseSetting = Register("effectReadyPulseEnabled", Settings.VarType.Boolean, "Cooldown Finished Pulse", true, nil, RefreshEffects)
+		Settings.CreateCheckbox(effectsCooldownReadySubcat, readyPulseSetting, "Play a short pulse when the current spell becomes ready again.")
 
 		local readyBounceSetting = Register("effectReadyBounceEnabled", Settings.VarType.Boolean, "Cooldown Finished Bounce", false, nil, RefreshEffects)
 		Settings.CreateCheckbox(effectsCooldownReadySubcat, readyBounceSetting, "Apply the short smooth scale pop when the current spell becomes ready again.")
 
 		local glowReadyColorSetting = Register("glowReadyColor", Settings.VarType.String, "Ready Event Color", "Gold", nil, RefreshEffects)
 		Settings.CreateDropdown(effectsCooldownReadySubcat, glowReadyColorSetting, GetGlowColorOptions, "Color for cooldown-finished focus effects.")
+
+		local gcdReadyToggle = Register("effectGCDReadyEnabled", Settings.VarType.Boolean, "GCD Finished Effect", true, nil, RefreshEffects)
+		Settings.CreateCheckbox(effectsCooldownReadySubcat, gcdReadyToggle, "Play a separate short effect when the global cooldown finishes.")
+
+		local gcdReadyFlashSetting = Register("effectGCDReadyFlashEnabled", Settings.VarType.Boolean, "GCD Finished Flash", true, nil, RefreshEffects)
+		Settings.CreateCheckbox(effectsCooldownReadySubcat, gcdReadyFlashSetting, "Flash once when the global cooldown finishes.")
+
+		local gcdReadyPulseSetting = Register("effectGCDReadyPulseEnabled", Settings.VarType.Boolean, "GCD Finished Pulse", false, nil, RefreshEffects)
+		Settings.CreateCheckbox(effectsCooldownReadySubcat, gcdReadyPulseSetting, "Play a short pulse when the global cooldown finishes.")
+
+		local gcdReadyBounceSetting = Register("effectGCDReadyBounceEnabled", Settings.VarType.Boolean, "GCD Finished Bounce", false, nil, RefreshEffects)
+		Settings.CreateCheckbox(effectsCooldownReadySubcat, gcdReadyBounceSetting, "Apply the short scale pop when the global cooldown finishes.")
+
+		local gcdReadyColorSetting = Register("effectGCDReadyColor", Settings.VarType.String, "GCD Ready Color", "White", nil, RefreshEffects)
+		Settings.CreateDropdown(effectsCooldownReadySubcat, gcdReadyColorSetting, GetGlowColorOptions, "Color for global-cooldown-finished effects.")
 
 		local glowProcToggle = Register("glowProcEnabled", Settings.VarType.Boolean, "Enable Proc Effect", true, nil, RefreshEffects)
 		Settings.CreateCheckbox(effectsProcSubcat, glowProcToggle, "Show a persistent effect while the recommended spell is proc-highlighted.")
@@ -527,6 +573,20 @@ function NS.RegisterSettings()
 		if NS.UpdateLayout then NS.UpdateLayout() end
 	end)
 	Settings.CreateDropdown(avadaSubcat, avadaCdOutlineSetting, GetOutlineOptions, "Adjust the outline style of Avada cooldown text.")
+
+	local avadaEffectsSubcat = Settings.RegisterVerticalLayoutSubcategory(category, "Avada Tracker Effects")
+
+	local avadaReadyFlashSetting = Register("avadaEffectReadyFlashEnabled", Settings.VarType.Boolean, "Cooldown Finished Flash", true, nil, RefreshEffects)
+	Settings.CreateCheckbox(avadaEffectsSubcat, avadaReadyFlashSetting, "Flash once when an Avada cooldown becomes ready.")
+
+	local avadaReadyPulseSetting = Register("avadaEffectReadyPulseEnabled", Settings.VarType.Boolean, "Cooldown Finished Pulse", true, nil, RefreshEffects)
+	Settings.CreateCheckbox(avadaEffectsSubcat, avadaReadyPulseSetting, "Play a short pulse when an Avada cooldown becomes ready.")
+
+	local avadaReadyBounceSetting = Register("avadaEffectReadyBounceEnabled", Settings.VarType.Boolean, "Cooldown Finished Bounce", false, nil, RefreshEffects)
+	Settings.CreateCheckbox(avadaEffectsSubcat, avadaReadyBounceSetting, "Apply the short scale pop when an Avada cooldown becomes ready.")
+
+	local avadaReadyColorSetting = Register("avadaEffectReadyColor", Settings.VarType.String, "Ready Event Color", "Gold", nil, RefreshEffects)
+	Settings.CreateDropdown(avadaEffectsSubcat, avadaReadyColorSetting, GetGlowColorOptions, "Color for Avada cooldown-finished effects.")
 
 	Settings.RegisterAddOnCategory(category)
 	NS.SettingsCategory = category

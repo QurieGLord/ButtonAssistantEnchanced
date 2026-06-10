@@ -3,7 +3,7 @@
 
 local ADDON_NAME, NS = ...
 local COOLDOWN_MODEL_VERSION = 2
-local EFFECT_MODEL_VERSION = 5
+local EFFECT_MODEL_VERSION = 6
 
 -- Forward declarations of local clean functions
 local UpdateButton
@@ -23,6 +23,7 @@ end
 local cleanRecommendedSpellID = nil
 local activeCooldowns = {}
 local pendingCooldowns = {}
+local chargeLedger = {}
 local gcdStartTime = 0
 local gcdDuration = 0
 local cleanGCDDuration = 1.0 -- Cached out-of-combat
@@ -31,6 +32,8 @@ local cachedBaseCooldowns = {} -- Stores unhasted base durations and haste flags
 local cachedActionSlots = {}
 local IsDurationObjectZero
 local cooldownVisualSerial = 0
+local DURATION_OBJECT_REPAINT_INTERVAL = 0.18
+local MAX_AVADA_ICONS = 6
 
 local function GetGCDDurationClean()
 	return cleanGCDDuration
@@ -38,6 +41,26 @@ end
 
 local function InvalidateCooldownVisuals()
 	cooldownVisualSerial = cooldownVisualSerial + 1
+end
+
+function NS.GetCleanHasteValue()
+	local ok, haste = pcall(GetHaste)
+	if not ok then
+		return nil
+	end
+
+	local cleanOK, cleanHaste = pcall(function()
+		if type(haste) == "number" then
+			return haste + 0
+		end
+		return nil
+	end)
+
+	if cleanOK and cleanHaste then
+		return cleanHaste
+	end
+
+	return nil
 end
 
 local function GetSpellBaseCooldownMSClean(spellID)
@@ -105,6 +128,12 @@ local function CacheSpellCooldown(spellID)
 	if not C_Spell or not C_Spell.GetSpellCooldown then return end
 	
 	local baseID = FindBaseSpellByID(spellID) or spellID
+	if NS.RefreshChargeLedgerFromSpell then
+		NS.RefreshChargeLedgerFromSpell(baseID)
+		if baseID ~= spellID then
+			NS.RefreshChargeLedgerFromSpell(spellID)
+		end
+	end
 	local cd = C_Spell.GetSpellCooldown(baseID)
 	
 	-- 1. If currently on cooldown, populate activeCooldowns AND cache the duration
@@ -114,7 +143,7 @@ local function CacheSpellCooldown(spellID)
 			duration = cd.duration
 		}
 		
-		local haste = GetHaste() or 0
+		local haste = NS.GetCleanHasteValue() or 0
 		local unhastedDuration = cd.duration * (1 + haste / 100)
 		local isHasted = (unhastedDuration < 60)
 		
@@ -128,7 +157,7 @@ local function CacheSpellCooldown(spellID)
 	if C_Spell.GetSpellCharges then
 		local chargesInfo = C_Spell.GetSpellCharges(baseID)
 		if chargesInfo and chargesInfo.cooldownDuration and chargesInfo.cooldownDuration > 1.5 then
-			local haste = GetHaste() or 0
+			local haste = NS.GetCleanHasteValue() or 0
 			local unhastedDuration = chargesInfo.cooldownDuration * (1 + haste / 100)
 			local isHasted = (unhastedDuration < 60)
 			
@@ -275,11 +304,14 @@ local function StartTrackedSpellCooldown(spellID, now)
 		end
 	end
 
-	if duration and duration > 1.5 then
-		local entry = {
-			startTime = now or GetTime(),
-			duration = duration
-		}
+		if duration and duration > 1.5 then
+			local trackedNow = GetTime()
+			local entry = {
+				startTime = now or GetTime(),
+				duration = duration,
+				createdAt = trackedNow,
+				source = "cast",
+			}
 		activeCooldowns[baseID] = entry
 		activeCooldowns[spellID] = entry
 		return true
@@ -379,6 +411,7 @@ local clean_buttonSize = 40
 local clean_showKeybind = true
 local clean_keybindFont = "Numeric"
 local clean_keybindFontSize = 12
+local clean_keybindUseAssistantAction = false
 local clean_showCooldown = true
 local clean_showBorder = true
 local clean_borderStyle = "classic"
@@ -408,6 +441,7 @@ local clean_effectNextReadyPulseEnabled = true
 local clean_effectReadyBounceEnabled = false
 local clean_effectReadyFlashEnabled = true
 local clean_effectReadyPulseEnabled = true
+local clean_effectGCDReady = { enabled = true, bounce = false, flash = true, pulse = false, color = "White" }
 local clean_effectProcBounceEnabled = false
 local clean_effectProcFlashEnabled = false
 local clean_avadaEnabled = true
@@ -416,6 +450,10 @@ local clean_avadaCustomCooldownText = true
 local clean_avadaCooldownFont = "Numeric"
 local clean_avadaCooldownFontSize = 12
 local clean_avadaCooldownFontOutline = "OUTLINE"
+local clean_avadaEffectReadyFlashEnabled = true
+local clean_avadaEffectReadyPulseEnabled = true
+local clean_avadaEffectReadyBounceEnabled = false
+local clean_avadaEffectReadyColor = "Gold"
 
 function NS.SyncCleanSettings()
 	if not NS.db then return end
@@ -424,6 +462,7 @@ function NS.SyncCleanSettings()
 	clean_showKeybind = NS.db.showKeybind
 	clean_keybindFont = NS.db.keybindFont or "Numeric"
 	clean_keybindFontSize = NS.db.keybindFontSize or 12
+	clean_keybindUseAssistantAction = NS.db.keybindUseAssistantAction and true or false
 	clean_showCooldown = NS.db.showCooldown
 	clean_showBorder = NS.db.showBorder
 	clean_borderStyle = NS.db.borderStyle or "classic"
@@ -458,6 +497,11 @@ function NS.SyncCleanSettings()
 	clean_effectReadyBounceEnabled = NS.db.effectReadyBounceEnabled
 	clean_effectReadyFlashEnabled = NS.db.effectReadyFlashEnabled
 	clean_effectReadyPulseEnabled = NS.db.effectReadyPulseEnabled
+	clean_effectGCDReady.enabled = NS.db.effectGCDReadyEnabled
+	clean_effectGCDReady.bounce = NS.db.effectGCDReadyBounceEnabled
+	clean_effectGCDReady.flash = NS.db.effectGCDReadyFlashEnabled
+	clean_effectGCDReady.pulse = NS.db.effectGCDReadyPulseEnabled
+	clean_effectGCDReady.color = NS.db.effectGCDReadyColor or "White"
 	clean_effectProcBounceEnabled = NS.db.effectProcBounceEnabled
 	clean_effectProcFlashEnabled = NS.db.effectProcFlashEnabled
 	clean_avadaEnabled = NS.db.avadaEnabled
@@ -466,15 +510,21 @@ function NS.SyncCleanSettings()
 	clean_avadaCooldownFont = NS.db.avadaCooldownFont or NS.db.cooldownFont or "Numeric"
 	clean_avadaCooldownFontSize = NS.db.avadaCooldownFontSize or 12
 	clean_avadaCooldownFontOutline = NS.db.avadaCooldownFontOutline or NS.db.cooldownFontOutline or "OUTLINE"
+	clean_avadaEffectReadyFlashEnabled = NS.db.avadaEffectReadyFlashEnabled
+	clean_avadaEffectReadyPulseEnabled = NS.db.avadaEffectReadyPulseEnabled
+	clean_avadaEffectReadyBounceEnabled = NS.db.avadaEffectReadyBounceEnabled
+	clean_avadaEffectReadyColor = NS.db.avadaEffectReadyColor or NS.db.glowReadyColor or "Gold"
 
 	-- Cache clean hasted GCD duration out-of-combat
 	if not InCombatLockdown() then
-		local haste = GetHaste() or 0
-		cleanGCDDuration = 1.5 / (1 + haste / 100)
-		if cleanGCDDuration < 0.75 then
-			cleanGCDDuration = 0.75
-		elseif cleanGCDDuration > 1.5 then
-			cleanGCDDuration = 1.5
+		local haste = NS.GetCleanHasteValue()
+		if haste then
+			cleanGCDDuration = 1.5 / (1 + haste / 100)
+			if cleanGCDDuration < 0.75 then
+				cleanGCDDuration = 0.75
+			elseif cleanGCDDuration > 1.5 then
+				cleanGCDDuration = 1.5
+			end
 		end
 	end
 end
@@ -765,15 +815,6 @@ local function GetCooldownRemainingForText(spellID)
 		return remaining
 	end
 
-	local now = GetTime()
-	local cd = activeCooldowns[baseID] or activeCooldowns[spellID]
-	if cd and cd.startTime and cd.duration then
-		remaining = cd.startTime + cd.duration - now
-		if remaining > 0 then
-			return remaining
-		end
-	end
-
 	return nil
 end
 
@@ -862,22 +903,30 @@ local function ReadSpellChargeStateForID(api, spellID)
 	if not IsCleanNumber(charges) or not IsCleanNumber(maxCharges) then
 		return false
 	end
+	local cooldownStartTime = chargesInfo.cooldownStartTime
+	local cooldownDuration = chargesInfo.cooldownDuration
+	if not IsCleanNumber(cooldownStartTime) then
+		cooldownStartTime = nil
+	end
+	if not IsCleanNumber(cooldownDuration) then
+		cooldownDuration = nil
+	end
 
 	local isActive = chargesInfo.isActive
 	local isOnGCD = chargesInfo.isOnGCD
 	if IsCleanBoolean(isActive) and IsCleanBoolean(isOnGCD) then
-		return true, isActive == true, isOnGCD == true, charges, maxCharges
+		return true, isActive == true, isOnGCD == true, charges, maxCharges, cooldownStartTime, cooldownDuration
 	end
 
 	if IsCleanBoolean(isActive) and isOnGCD == nil then
-		return true, isActive == true, false, charges, maxCharges
+		return true, isActive == true, false, charges, maxCharges, cooldownStartTime, cooldownDuration
 	end
 
 	if maxCharges > 1 then
-		return true, charges < maxCharges, false, charges, maxCharges
+		return true, charges < maxCharges, false, charges, maxCharges, cooldownStartTime, cooldownDuration
 	end
 
-	return true, false, false, charges, maxCharges
+	return true, false, false, charges, maxCharges, cooldownStartTime, cooldownDuration
 end
 
 local function GetCleanSpellChargeState(spellID)
@@ -887,23 +936,23 @@ local function GetCleanSpellChargeState(spellID)
 	end
 
 	local baseID = FindBaseSpellByID(spellID) or spellID
-	local known, active, onGCD, charges, maxCharges = ReadSpellChargeStateForID(api, spellID)
+	local known, active, onGCD, charges, maxCharges, cooldownStartTime, cooldownDuration = ReadSpellChargeStateForID(api, spellID)
 	if known and active and not onGCD then
-		return true, true, false, charges, maxCharges
+		return true, true, false, charges, maxCharges, cooldownStartTime, cooldownDuration
 	end
 
 	if baseID ~= spellID then
-		local baseKnown, baseActive, baseOnGCD, baseCharges, baseMaxCharges = ReadSpellChargeStateForID(api, baseID)
+		local baseKnown, baseActive, baseOnGCD, baseCharges, baseMaxCharges, baseStartTime, baseDuration = ReadSpellChargeStateForID(api, baseID)
 		if baseKnown and baseActive and not baseOnGCD then
-			return true, true, false, baseCharges, baseMaxCharges
+			return true, true, false, baseCharges, baseMaxCharges, baseStartTime, baseDuration
 		end
 		if not known and baseKnown then
-			return true, baseActive, baseOnGCD, baseCharges, baseMaxCharges
+			return true, baseActive, baseOnGCD, baseCharges, baseMaxCharges, baseStartTime, baseDuration
 		end
 	end
 
 	if known then
-		return true, active, onGCD, charges, maxCharges
+		return true, active, onGCD, charges, maxCharges, cooldownStartTime, cooldownDuration
 	end
 
 	return false
@@ -1000,6 +1049,19 @@ local function ApplyCooldownCountdownFont(cooldownFrame)
 	end
 
 	ApplyConfiguredFont(fontString, clean_cooldownFont, clean_cooldownFontSize or 14, clean_cooldownFontOutline or "OUTLINE", "NumberFontNormal")
+end
+
+local function ApplyAvadaCooldownCountdownFont(cooldownFrame)
+	if not cooldownFrame or not cooldownFrame.GetCountdownFontString then
+		return
+	end
+
+	local ok, fontString = pcall(cooldownFrame.GetCountdownFontString, cooldownFrame)
+	if not ok or not fontString then
+		return
+	end
+
+	ApplyConfiguredFont(fontString, clean_avadaCooldownFont or clean_cooldownFont, clean_avadaCooldownFontSize or 12, clean_avadaCooldownFontOutline or clean_cooldownFontOutline or "OUTLINE", "NumberFontNormal")
 end
 
 local function TryGetDurationObject(api, spellID)
@@ -1147,9 +1209,323 @@ local function TryApplySpellCooldownDurationObject(cooldownFrame, spellID, prefe
 end
 
 local function GetCleanSpellCharges(spellID)
-	local known, _, _, charges, maxCharges = GetCleanSpellChargeState(spellID)
+	local known, _, _, charges, maxCharges, cooldownStartTime, cooldownDuration = GetCleanSpellChargeState(spellID)
 	if known and IsCleanNumber(charges) and IsCleanNumber(maxCharges) then
-		return charges, maxCharges
+		return charges, maxCharges, cooldownStartTime, cooldownDuration
+	end
+
+	return nil
+end
+
+function NS.GetChargeLedgerKey(spellID)
+	if not spellID then
+		return nil
+	end
+	return FindBaseSpellByID(spellID) or spellID
+end
+
+function NS.GetStoredChargeLedger(spellID)
+	local key = NS.GetChargeLedgerKey(spellID)
+	if not key then
+		return nil
+	end
+	return chargeLedger[key] or chargeLedger[spellID]
+end
+
+function NS.StoreChargeLedger(spellID, entry)
+	local key = NS.GetChargeLedgerKey(spellID)
+	if not key or not entry then
+		return nil
+	end
+
+	entry.spellID = spellID
+	entry.baseID = key
+	chargeLedger[key] = entry
+	if key ~= spellID then
+		chargeLedger[spellID] = entry
+	end
+	return entry
+end
+
+function NS.EstimateChargeRechargeDuration(spellID, fallbackDuration)
+	local gcdThreshold = math.max(1.55, ((gcdDuration and gcdDuration > 0 and gcdDuration) or cleanGCDDuration or 1.5) + 0.10)
+	if fallbackDuration and fallbackDuration > gcdThreshold then
+		return fallbackDuration
+	end
+
+	local duration = GetSpellCooldownDurationClean(spellID)
+	if duration and duration > gcdThreshold then
+		return duration
+	end
+
+	local baseID = FindBaseSpellByID(spellID) or spellID
+	local baseMS = GetSpellBaseCooldownMSClean(baseID)
+	if (not baseMS or baseMS <= gcdThreshold * 1000) and baseID ~= spellID then
+		baseMS = GetSpellBaseCooldownMSClean(spellID)
+	end
+	if baseMS and baseMS > gcdThreshold * 1000 then
+		duration = baseMS / 1000
+		if baseMS < 60000 then
+			duration = duration * (cleanGCDDuration / 1.5)
+		end
+		return duration
+	end
+
+	return nil
+end
+
+function NS.AdvanceChargeLedger(entry, now)
+	if not entry or not entry.maxCharges or entry.maxCharges <= 1 then
+		return entry
+	end
+
+	now = now or GetTime()
+	entry.currentCharges = Clamp(Round(entry.currentCharges or entry.maxCharges), 0, entry.maxCharges)
+
+	if entry.currentCharges >= entry.maxCharges then
+		entry.rechargeStart = nil
+		entry.rechargeDuration = nil
+		entry.nextReadyAt = nil
+		return entry
+	end
+
+	local duration = entry.rechargeDuration
+	local nextReadyAt = entry.nextReadyAt
+	if not nextReadyAt and entry.rechargeStart and duration and duration > 0 then
+		nextReadyAt = entry.rechargeStart + duration
+		entry.nextReadyAt = nextReadyAt
+	end
+
+	if duration and duration > 0 and nextReadyAt then
+		while entry.currentCharges < entry.maxCharges and now + 0.02 >= nextReadyAt do
+			entry.currentCharges = entry.currentCharges + 1
+			if entry.currentCharges < entry.maxCharges then
+				nextReadyAt = nextReadyAt + duration
+				entry.rechargeStart = nextReadyAt - duration
+				entry.nextReadyAt = nextReadyAt
+			else
+				entry.rechargeStart = nil
+				entry.rechargeDuration = nil
+				entry.nextReadyAt = nil
+			end
+		end
+	end
+
+	return entry
+end
+
+function NS.RefreshChargeLedgerFromSpell(spellID)
+	if not spellID then
+		return nil, false
+	end
+
+	local known, _, onGCD, charges, maxCharges, cooldownStartTime, cooldownDuration = GetCleanSpellChargeState(spellID)
+	if not known or not IsCleanNumber(charges) or not IsCleanNumber(maxCharges) or maxCharges <= 1 then
+		return nil, false
+	end
+
+	local now = GetTime()
+	local gcdThreshold = math.max(1.55, ((gcdDuration and gcdDuration > 0 and gcdDuration) or cleanGCDDuration or 1.5) + 0.10)
+	maxCharges = Clamp(Round(maxCharges), 1, 99)
+	charges = Clamp(Round(charges), 0, maxCharges)
+
+	local entry = NS.GetStoredChargeLedger(spellID) or {}
+	NS.AdvanceChargeLedger(entry, now)
+	local ledgerHasRecharge = entry.maxCharges == maxCharges
+		and entry.currentCharges
+		and entry.currentCharges < maxCharges
+		and entry.rechargeStart
+		and entry.rechargeDuration
+		and entry.rechargeDuration > 0
+		and entry.nextReadyAt
+		and entry.nextReadyAt > now
+	local nativeLooksLikeGCD = onGCD == true or (cooldownDuration and cooldownDuration > 0 and cooldownDuration <= gcdThreshold)
+	local nativeRechargeActive = charges < maxCharges
+		and cooldownStartTime
+		and cooldownDuration
+		and cooldownDuration > 0
+		and not nativeLooksLikeGCD
+		and cooldownStartTime + cooldownDuration > now
+
+	if nativeLooksLikeGCD then
+		cooldownStartTime = nil
+		cooldownDuration = nil
+	end
+
+	if ledgerHasRecharge and charges >= maxCharges then
+		return NS.AdvanceChargeLedger(NS.StoreChargeLedger(spellID, entry), now), true
+	end
+
+	if charges >= maxCharges and cooldownStartTime and cooldownDuration and cooldownDuration > 0 and cooldownDuration > gcdThreshold and cooldownStartTime + cooldownDuration > now then
+		charges = maxCharges - 1
+		nativeRechargeActive = true
+	end
+
+	if ledgerHasRecharge and charges < maxCharges then
+		local nativeExpired = not nativeRechargeActive
+		local nativeEnd = cooldownStartTime and cooldownDuration and cooldownStartTime + cooldownDuration
+		local ledgerEnd = entry.rechargeStart and entry.rechargeDuration and entry.rechargeStart + entry.rechargeDuration
+		local nativeLooksStale = cooldownStartTime
+			and entry.rechargeStart
+			and cooldownStartTime < entry.rechargeStart - 0.05
+			and (not nativeEnd or not ledgerEnd or nativeEnd >= ledgerEnd - 0.05)
+		if nativeExpired or nativeLooksStale then
+			cooldownStartTime = entry.rechargeStart
+			cooldownDuration = entry.rechargeDuration
+			nativeRechargeActive = true
+		end
+	end
+
+	entry.maxCharges = maxCharges
+	entry.currentCharges = charges
+	entry.lastCleanAt = now
+
+	if charges < maxCharges and cooldownStartTime and cooldownDuration and cooldownDuration > 0 then
+		entry.rechargeStart = cooldownStartTime
+		entry.rechargeDuration = cooldownDuration
+		entry.nextReadyAt = cooldownStartTime + cooldownDuration
+	elseif charges < maxCharges and ledgerHasRecharge then
+		entry.rechargeStart = entry.rechargeStart
+		entry.rechargeDuration = entry.rechargeDuration
+		entry.nextReadyAt = entry.nextReadyAt
+	elseif charges < maxCharges then
+		local duration = NS.EstimateChargeRechargeDuration(spellID, entry.rechargeDuration)
+		if duration and duration > 0 then
+			entry.rechargeStart = now
+			entry.rechargeDuration = duration
+			entry.nextReadyAt = now + duration
+		end
+	else
+		entry.rechargeStart = nil
+		entry.rechargeDuration = nil
+		entry.nextReadyAt = nil
+	end
+
+	return NS.AdvanceChargeLedger(NS.StoreChargeLedger(spellID, entry), now), true
+end
+
+function NS.GetChargeStateForDisplay(spellID)
+	local entry, clean = NS.RefreshChargeLedgerFromSpell(spellID)
+	if not entry then
+		entry = NS.GetStoredChargeLedger(spellID)
+		if entry then
+			entry = NS.AdvanceChargeLedger(entry)
+		end
+	end
+
+	if entry and entry.maxCharges and entry.maxCharges > 1 then
+		return entry.currentCharges, entry.maxCharges, entry.rechargeStart, entry.rechargeDuration, clean and "native" or "ledger"
+	end
+
+	return nil
+end
+
+function NS.NoteChargeDurationObjectState(spellID, isZero)
+	local entry = NS.GetStoredChargeLedger(spellID)
+	if not entry or not entry.maxCharges or entry.maxCharges <= 1 then
+		return
+	end
+
+	local now = GetTime()
+	NS.AdvanceChargeLedger(entry, now)
+	if isZero == true then
+		if entry.currentCharges < entry.maxCharges and entry.nextReadyAt and entry.nextReadyAt > now then
+			return
+		end
+		entry.currentCharges = entry.maxCharges
+		entry.rechargeStart = nil
+		entry.rechargeDuration = nil
+		entry.nextReadyAt = nil
+		return
+	end
+
+	if isZero == false and entry.currentCharges >= entry.maxCharges then
+		entry.currentCharges = entry.maxCharges - 1
+	end
+
+	if isZero == false and entry.currentCharges < entry.maxCharges and not entry.nextReadyAt then
+		local duration = NS.EstimateChargeRechargeDuration(spellID, entry.rechargeDuration)
+		if duration and duration > 0 then
+			entry.rechargeStart = now
+			entry.rechargeDuration = duration
+			entry.nextReadyAt = now + duration
+		end
+	end
+end
+
+function NS.NoteSpellChargeCast(spellID, startTime)
+	local entry = NS.GetStoredChargeLedger(spellID)
+	if not entry or not entry.maxCharges or entry.maxCharges <= 1 then
+		local known, _, _, charges, maxCharges = GetCleanSpellChargeState(spellID)
+		if not known or not IsCleanNumber(maxCharges) or maxCharges <= 1 then
+			return false
+		end
+
+		maxCharges = Clamp(Round(maxCharges), 1, 99)
+		local observedCharges = IsCleanNumber(charges) and Clamp(Round(charges), 0, maxCharges) or maxCharges
+		entry = NS.StoreChargeLedger(spellID, {
+			maxCharges = maxCharges,
+			currentCharges = Clamp(observedCharges + 1, 0, maxCharges),
+		})
+		if not entry then
+			return false
+		end
+	end
+
+	local now = startTime or GetTime()
+	NS.AdvanceChargeLedger(entry, now)
+	if entry.currentCharges <= 0 then
+		return false
+	end
+
+	entry.currentCharges = entry.currentCharges - 1
+	if entry.currentCharges < entry.maxCharges and not entry.nextReadyAt then
+		local duration = NS.EstimateChargeRechargeDuration(spellID, entry.rechargeDuration)
+		if duration and duration > 0 then
+			entry.rechargeStart = now
+			entry.rechargeDuration = duration
+			entry.nextReadyAt = now + duration
+		end
+	end
+
+	return true
+end
+
+function NS.RefreshWatchedChargeLedgers()
+	if cleanRecommendedSpellID then
+		NS.RefreshChargeLedgerFromSpell(cleanRecommendedSpellID)
+	end
+
+	local list = local_GetAvadaTargetList and local_GetAvadaTargetList()
+	if not list then
+		return
+	end
+
+	for i = 1, MAX_AVADA_ICONS do
+		local data = list[i]
+		if data and data.type == "cd" and data.spellID then
+			NS.RefreshChargeLedgerFromSpell(data.spellID)
+		end
+	end
+end
+
+local function GetChargeCooldownKey(charges, maxCharges, cooldownStartTime, cooldownDuration)
+	if not charges or not maxCharges or maxCharges <= 1 then
+		return nil
+	end
+
+	local startKey = IsCleanNumber(cooldownStartTime) and Round(cooldownStartTime * 10) or 0
+	local durationKey = IsCleanNumber(cooldownDuration) and Round(cooldownDuration * 10) or 0
+	return tostring(charges) .. "/" .. tostring(maxCharges) .. ":" .. tostring(startKey) .. ":" .. tostring(durationKey)
+end
+
+local function GetChargeCooldownRemainingForText(spellID)
+	local charges, maxCharges, cooldownStartTime, cooldownDuration = NS.GetChargeStateForDisplay(spellID)
+	if charges and maxCharges and maxCharges > 1 and charges < maxCharges and cooldownStartTime and cooldownDuration and cooldownDuration > 0 then
+		local remaining = cooldownStartTime + cooldownDuration - GetTime()
+		if remaining > 0 then
+			return remaining
+		end
 	end
 
 	return nil
@@ -1262,6 +1638,16 @@ local function IsSpellRealCooldownActive(spellID)
 	local gcdActive = gcdStartTime + gcdDuration > now
 	local trackedActive = GetTrackedSpellCooldownActive(spellID)
 	local directZero = false
+	local charges, maxCharges, chargeStartTime, chargeDuration = NS.GetChargeStateForDisplay(spellID)
+
+	if charges and maxCharges and maxCharges > 1 then
+		if charges > 0 then
+			return false
+		end
+		if chargeStartTime and chargeDuration and chargeDuration > 0 and chargeStartTime + chargeDuration > now then
+			return true
+		end
+	end
 
 	local durationObject = TryGetSpellCooldownDurationObject(spellID, true)
 	if durationObject then
@@ -1510,23 +1896,6 @@ local function EnsureFocusPulse(button)
 	return f
 end
 
-local function TriggerFocusPulse(button, colorName, fallbackName)
-	local f = EnsureFocusPulse(button)
-	if not f then
-		return
-	end
-
-	local rgb = GetGlowColorRGB(colorName, fallbackName)
-	f.glowR, f.glowG, f.glowB = rgb[1], rgb[2], rgb[3]
-	f.persistent = false
-	f.mode = "sheen"
-	f.startTime = GetTime()
-	f.sheenDuration = 0.28
-	f.fadeDuration = 0.14
-	f:SetAlpha(1)
-	f:Show()
-end
-
 local function HideFocusPulse(button)
 	if button and button.focusPulse then
 		local f = button.focusPulse
@@ -1541,6 +1910,73 @@ local function HideFocusPulse(button)
 		f:Hide()
 		f:SetScale(1)
 	end
+end
+
+local function EnsureTransitionPulse(button)
+	if not button then
+		return nil
+	end
+
+	if button.transitionPulse then
+		return button.transitionPulse
+	end
+
+	local host = button.visualRoot or button
+	local f = NS.CreateFrame("Frame", nil, host)
+	f:SetAllPoints(button.icon or button)
+	f:SetFrameLevel(host:GetFrameLevel() + 7)
+	f:Hide()
+
+	f.wash = f:CreateTexture(nil, "OVERLAY")
+	f.wash:SetTexture("Interface\\Buttons\\WHITE8X8")
+	f.wash:SetAllPoints()
+	f.wash:SetBlendMode("ADD")
+
+	local function edge()
+		local tex = f:CreateTexture(nil, "OVERLAY")
+		tex:SetTexture("Interface\\Buttons\\WHITE8X8")
+		tex:SetBlendMode("ADD")
+		return tex
+	end
+
+	f.top = edge()
+	f.top:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+	f.top:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+	f.top:SetHeight(2)
+	f.bottom = edge()
+	f.bottom:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+	f.bottom:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+	f.bottom:SetHeight(2)
+	f.left = edge()
+	f.left:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+	f.left:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+	f.left:SetWidth(2)
+	f.right = edge()
+	f.right:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+	f.right:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+	f.right:SetWidth(2)
+
+	f:SetScript("OnUpdate", function(self)
+		local now = GetTime()
+		local progress = (now - (self.startTime or now)) / (self.duration or 0.22)
+		if progress >= 1 then
+			self:Hide()
+			self:SetScale(1)
+			return
+		end
+
+		local r, g, b = self.glowR or 1, self.glowG or 1, self.glowB or 1
+		local alpha = 1 - progress
+		self:SetScale(1 + 0.055 * progress)
+		self.wash:SetVertexColor(r, g, b, 0.10 * alpha)
+		self.top:SetVertexColor(r, g, b, 0.42 * alpha)
+		self.bottom:SetVertexColor(r, g, b, 0.34 * alpha)
+		self.left:SetVertexColor(r, g, b, 0.34 * alpha)
+		self.right:SetVertexColor(r, g, b, 0.34 * alpha)
+	end)
+
+	button.transitionPulse = f
+	return f
 end
 
 local function SetProcSweepColor(frame, r, g, b)
@@ -2073,7 +2509,48 @@ local function TriggerButtonTransitionEffect(button, flashEnabled, bounceEnabled
 	end
 
 	if pulseEnabled then
-		TriggerFocusPulse(button, colorName, fallbackName)
+		local pulse = EnsureTransitionPulse(button)
+		if pulse then
+			local rgb = GetGlowColorRGB(colorName, fallbackName)
+			pulse.glowR, pulse.glowG, pulse.glowB = rgb[1], rgb[2], rgb[3]
+			pulse.startTime = now
+			pulse.duration = 0.22
+			pulse:SetScale(1)
+			pulse:Show()
+		end
+	end
+end
+
+local function UpdateTransitionAnimations(button, now)
+	if not button then
+		return
+	end
+
+	now = now or GetTime()
+	if button.isBouncing and button.bounceStart then
+		local visual = button.visualRoot or button
+		local progress = now - button.bounceStart
+		local duration = 0.26
+		if progress < duration then
+			local amplitude = math.max(0.02, math.min((clean_bounceScale or 1.10) - 1.0, 0.28))
+			local t = progress / duration
+			local envelope = (1 - t) ^ 1.25
+			local spring = math.sin(t * math.pi * 2)
+			visual:SetScale(1 + amplitude * 1.35 * spring * envelope)
+		else
+			visual:SetScale(1)
+			button.isBouncing = false
+		end
+	end
+
+	if button.flash and button.flash:IsShown() and button.flashStart then
+		local progress = now - button.flashStart
+		local duration = 0.15
+		if progress < duration then
+			button.flash:SetAlpha(1.0 - (progress / duration))
+		else
+			button.flash:Hide()
+		end
 	end
 end
 
@@ -2132,12 +2609,12 @@ local function OnButtonUpdate(self, elapsed)
 		end
 
 			-- 5. Custom Cooldown countdown text (runs every frame for smooth tick-down)
-		local inGCD = not clean_ignoreGCD and gcdStartTime + gcdDuration > now
-		if clean_customCooldownText and self.spellID and not inGCD then
-			local remaining = GetCooldownRemainingForText(self.spellID)
-			if remaining and remaining > 0 and ApplyCustomCooldownText(self.customCooldownText, remaining) then
-				self.cooldown:SetHideCountdownNumbers(true)
-			else
+			local inGCD = not clean_ignoreGCD and gcdStartTime + gcdDuration > now
+			if clean_customCooldownText and self.spellID and not inGCD then
+				local remaining = GetChargeCooldownRemainingForText(self.spellID) or GetCooldownRemainingForText(self.spellID)
+				if remaining and remaining > 0 and ApplyCustomCooldownText(self.customCooldownText, remaining) then
+					self.cooldown:SetHideCountdownNumbers(true)
+				else
 				self.customCooldownText:Hide()
 				self.cooldown:SetHideCountdownNumbers(false)
 			end
@@ -2243,10 +2720,16 @@ local function ApplyIconBorderStyle(button, size, showBorder, style)
 	end
 
 	local useDark = showBorder and style == "dark"
+	local useBlizzardDark = showBorder and style == "blizzardDark"
 	if button.border then
 		local borderSize = (size or 40) * 46 / 40
 		button.border:SetSize(borderSize, borderSize)
 		button.border:SetShown(showBorder and not useDark)
+		if useBlizzardDark then
+			button.border:SetVertexColor(0.18, 0.19, 0.21, 0.98)
+		else
+			button.border:SetVertexColor(1, 1, 1, 1)
+		end
 	end
 
 	if useDark then
@@ -2285,13 +2768,25 @@ local function CreateSuggestionButton(parent)
 	ApplyCooldownWidgetStyle(b.cooldown, false)
 	b.cooldown:Show() -- Show once, never Hide/Show cycle — use Clear() instead
 
-	b.hotkey = b.visualRoot:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall") -- Using a cleaner number font
+	b.textLayer = NS.CreateFrame("Frame", nil, b.visualRoot)
+	b.textLayer:SetAllPoints(b.icon)
+	b.textLayer:SetFrameLevel(b.cooldown:GetFrameLevel() + 3)
+
+	b.hotkey = b.textLayer:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall") -- Using a cleaner number font
 	b.hotkey:SetPoint("TOPRIGHT", b.icon, "TOPRIGHT", -2, -2)
 	b.hotkey:SetJustifyH("RIGHT")
 	b.hotkey:SetDrawLayer("OVERLAY", 7)
+	b.hotkeyCache = {}
+
+	b.count = b.textLayer:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+	b.count:SetPoint("BOTTOMRIGHT", b.icon, "BOTTOMRIGHT", -1, 1)
+	b.count:SetJustifyH("RIGHT")
+	b.count:SetDrawLayer("OVERLAY", 7)
+	b.count:SetText("")
+	b.count:Hide()
 
 	-- Custom Cooldown Text Overlaid
-	b.customCooldownText = b.visualRoot:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+	b.customCooldownText = b.textLayer:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 	b.customCooldownText:SetPoint("CENTER", b.icon, "CENTER", 0, 0)
 	b.customCooldownText:SetJustifyH("CENTER")
 	b.customCooldownText:SetDrawLayer("OVERLAY", 7)
@@ -2333,20 +2828,30 @@ local function CreateAvadaIcon(parent, index)
 	b.cooldown:SetDrawSwipe(true)
 	b.cooldown:Show()
 
-	b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+	b.textLayer = NS.CreateFrame("Frame", nil, b)
+	b.textLayer:SetAllPoints(b.icon)
+	b.textLayer:SetFrameLevel(b.cooldown:GetFrameLevel() + 3)
+
+	b.count = b.textLayer:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 	b.count:SetPoint("BOTTOMRIGHT", b.icon, "BOTTOMRIGHT", 0, 0)
 	b.count:SetJustifyH("RIGHT")
+	b.count:SetDrawLayer("OVERLAY", 7)
 
-	b.customCooldownText = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+	b.customCooldownText = b.textLayer:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 	b.customCooldownText:SetPoint("CENTER", b.icon, "CENTER", 0, 0)
 	b.customCooldownText:SetJustifyH("CENTER")
 	b.customCooldownText:SetDrawLayer("OVERLAY", 7)
 	b.customCooldownText:Hide()
 
+	b.flash = b:CreateTexture(nil, "OVERLAY")
+	b.flash:SetTexture("Interface\\Buttons\\WHITE8X8")
+	b.flash:SetAllPoints(b.icon)
+	b.flash:SetBlendMode("ADD")
+	b.flash:SetAlpha(0)
+	b.flash:Hide()
+
 	return b
 end
-
-local MAX_AVADA_ICONS = 6
 
 local function GetAvadaIconCount()
 	local count = 0
@@ -2491,6 +2996,9 @@ function NS.UpdateLayout()
 
 	-- Update keybind text font and size
 	ApplyConfiguredFont(b.hotkey, NS.db.keybindFont or "Numeric", NS.db.keybindFontSize or 12, "OUTLINE", "NumberFontNormalSmall")
+	if b.count then
+		ApplyConfiguredFont(b.count, NS.db.keybindFont or "Numeric", math.max(9, NS.db.keybindFontSize or 12), "OUTLINE", "NumberFontNormalSmall")
+	end
 
 	-- Update custom cooldown text font and size
 	if b.customCooldownText then
@@ -2501,6 +3009,8 @@ function NS.UpdateLayout()
 	NS.SyncCleanSettings()
 	ApplyCooldownWidgetStyle(b.cooldown, false)
 	b.cooldownVisualSerial = nil
+	b.cooldownVisualNextRefresh = nil
+	b.cooldownVisualKey = nil
 
 	-- Update Avada Layout
 	NS.UpdateAvadaLayout()
@@ -2520,55 +3030,113 @@ function UpdateCooldownForSpell(b, spellID)
 		b.cooldownVisualSpellID = nil
 		b.cooldownVisualIgnoreGCD = nil
 		b.cooldownVisualSerial = nil
+		b.cooldownVisualChargeKey = nil
+		b.cooldownVisualNextRefresh = nil
+		b.cooldownVisualKey = nil
 		if b.customCooldownText then b.customCooldownText:Hide() end
 		return
 	end
 
-	if b.cooldownVisualSpellID == spellID and b.cooldownVisualIgnoreGCD == clean_ignoreGCD and b.cooldownVisualSerial == cooldownVisualSerial then
+	local now = GetTime()
+	local charges, maxCharges, chargeStartTime, chargeDuration = NS.GetChargeStateForDisplay(spellID)
+	local chargeKey = GetChargeCooldownKey(charges, maxCharges, chargeStartTime, chargeDuration)
+	local hasChargeCooldown = charges and maxCharges and maxCharges > 1 and charges < maxCharges
+	local gcdActive = not clean_ignoreGCD and gcdStartTime + gcdDuration > now
+
+	if b.cooldownVisualSpellID == spellID and b.cooldownVisualIgnoreGCD == clean_ignoreGCD and b.cooldownVisualSerial == cooldownVisualSerial and b.cooldownVisualChargeKey == chargeKey and (not b.cooldownVisualNextRefresh or b.cooldownVisualNextRefresh > now) then
 		return
 	end
 
 	-- asNextSkill model: feed Blizzard's opaque DurationObject directly
 	-- into the Cooldown widget. With no ignoreGCD argument it displays both
 	-- GCD and real spell cooldowns, including in combat.
-	ApplyCooldownWidgetStyle(b.cooldown, false)
-	local durationobj = TryGetSpellCooldownDurationObject(spellID, clean_ignoreGCD)
+	local usingChargeCooldown = hasChargeCooldown and not gcdActive
+	local durationobj
+	if usingChargeCooldown then
+		if not (chargeStartTime and chargeDuration and chargeDuration > 0) then
+			durationobj = TryGetSpellChargeDurationObject(spellID)
+		end
+	else
+		durationobj = TryGetSpellCooldownDurationObject(spellID, clean_ignoreGCD)
+	end
 	if durationobj then
-		if IsDurationObjectZero(durationobj) == true then
-			ClearCooldownWidget(b.cooldown, true)
-			b.cooldownVisualSpellID = spellID
-			b.cooldownVisualIgnoreGCD = clean_ignoreGCD
-			b.cooldownVisualSerial = cooldownVisualSerial
-			return
+		local durationZero = IsDurationObjectZero(durationobj)
+		if usingChargeCooldown then
+			NS.NoteChargeDurationObjectState(spellID, durationZero)
 		end
+		if durationZero == true then
+			if usingChargeCooldown and chargeStartTime and chargeDuration and chargeDuration > 0 then
+				durationobj = nil
+			else
+				local readyKey = tostring(spellID) .. ":" .. tostring(clean_ignoreGCD) .. ":" .. tostring(chargeKey or "nocharge") .. ":ready"
+				ClearTrackedSpellCooldown(spellID)
+				if b.cooldownVisualKey ~= readyKey then
+					ClearCooldownWidget(b.cooldown, true)
+				end
+				b.cooldownVisualSpellID = spellID
+				b.cooldownVisualIgnoreGCD = clean_ignoreGCD
+				b.cooldownVisualSerial = cooldownVisualSerial
+				b.cooldownVisualChargeKey = chargeKey
+				b.cooldownVisualNextRefresh = nil
+				b.cooldownVisualKey = readyKey
+				return
+			end
+			elseif durationZero == nil then
+				durationobj = nil
+			end
 
-		local ok = pcall(b.cooldown.SetCooldownFromDurationObject, b.cooldown, durationobj)
-		if ok then
-			ApplyCooldownWidgetStyle(b.cooldown, false)
-			b.cooldown:Show()
-			b.cooldownVisualSpellID = spellID
-			b.cooldownVisualIgnoreGCD = clean_ignoreGCD
-			b.cooldownVisualSerial = cooldownVisualSerial
-			return
-		end
+			if durationobj then
+				local ok = pcall(b.cooldown.SetCooldownFromDurationObject, b.cooldown, durationobj)
+				if ok then
+					local activeKey = tostring(spellID) .. ":" .. tostring(clean_ignoreGCD) .. ":" .. tostring(chargeKey or "nocharge") .. ":duration"
+					ApplyCooldownWidgetStyle(b.cooldown, false)
+					b.cooldown:Show()
+					b.cooldownVisualSpellID = spellID
+					b.cooldownVisualIgnoreGCD = clean_ignoreGCD
+					b.cooldownVisualSerial = cooldownVisualSerial
+					b.cooldownVisualChargeKey = chargeKey
+					b.cooldownVisualNextRefresh = now + DURATION_OBJECT_REPAINT_INTERVAL
+					b.cooldownVisualKey = activeKey
+					return
+				end
+			end
 	end
 
 	-- Fallback continuity path for rare API gaps: use the clean local ledger.
-	local startTime, duration = GetSpellCooldownClean(spellID)
+	local startTime, duration
+	if usingChargeCooldown and chargeStartTime and chargeDuration and chargeDuration > 0 then
+		startTime, duration = chargeStartTime, chargeDuration
+	elseif not clean_ignoreGCD and gcdStartTime + gcdDuration > now then
+		startTime, duration = gcdStartTime, gcdDuration
+	elseif not InCombatLockdown() then
+		startTime, duration = GetSpellCooldownClean(spellID)
+	else
+		startTime, duration = 0, 0
+	end
 	if startTime and duration and startTime > 0 and duration > 0 then
+		local activeKey = tostring(spellID) .. ":" .. tostring(clean_ignoreGCD) .. ":" .. tostring(chargeKey or "nocharge") .. ":fallback"
 		SafeSetCooldown(b.cooldown, startTime, duration)
 		ApplyCooldownWidgetStyle(b.cooldown, false)
 		b.cooldown:Show()
 		b.cooldownVisualSpellID = spellID
 		b.cooldownVisualIgnoreGCD = clean_ignoreGCD
 		b.cooldownVisualSerial = cooldownVisualSerial
+		b.cooldownVisualChargeKey = chargeKey
+		b.cooldownVisualNextRefresh = nil
+		b.cooldownVisualKey = activeKey
 		return
 	end
 
-	ClearCooldownWidget(b.cooldown, true)
+	local readyKey = tostring(spellID) .. ":" .. tostring(clean_ignoreGCD) .. ":" .. tostring(chargeKey or "nocharge") .. ":ready"
+	if b.cooldownVisualKey ~= readyKey then
+		ClearCooldownWidget(b.cooldown, true)
+	end
 	b.cooldownVisualSpellID = spellID
 	b.cooldownVisualIgnoreGCD = clean_ignoreGCD
 	b.cooldownVisualSerial = cooldownVisualSerial
+	b.cooldownVisualChargeKey = chargeKey
+	b.cooldownVisualNextRefresh = nil
+	b.cooldownVisualKey = readyKey
 end
 
 local ticker
@@ -2636,46 +3204,123 @@ function NS.UpdateVisibility()
 	end)
 end
 
+local function GetStableKeybindText(button, spellID, changed)
+	if not button or not spellID then
+		return ""
+	end
+
+	button.hotkeyCache = button.hotkeyCache or {}
+	if clean_keybindUseAssistantAction then
+		local text = NS.GetAssistantKeyBind and NS.GetAssistantKeyBind()
+		if text and text ~= "" then
+			button.lastAssistantHotkeyText = text
+			return text
+		end
+		return button.lastAssistantHotkeyText or ""
+	end
+
+	if not local_GetKeyBindForSpellID then
+		return ""
+	end
+
+	local baseID = FindBaseSpellByID(spellID) or spellID
+	local text = local_GetKeyBindForSpellID(spellID)
+	if text and text ~= "" then
+		button.hotkeyCache[spellID] = text
+		button.hotkeyCache[baseID] = text
+		button.lastHotkeySpellID = spellID
+		return text
+	end
+
+	text = button.hotkeyCache[spellID] or button.hotkeyCache[baseID]
+	if text and text ~= "" then
+		return text
+	end
+
+	if not changed and button.lastHotkeySpellID == spellID and button.hotkey and button.hotkey.GetText then
+		text = button.hotkey:GetText()
+		if text and text ~= "" then
+			return text
+		end
+	end
+
+	return ""
+end
+
 function UpdateButton(b, spellID)
-			SafeCallClean(function()
-				if not spellID then
-					b.spellID = nil
-					b.icon:SetTexture(nil)
-					b.hotkey:SetText("")
-				ClearCooldownWidget(b.cooldown, false)
-				b.cooldownVisualSpellID = nil
-				b.cooldownVisualIgnoreGCD = nil
-				b.cooldownVisualSerial = nil
-					if b.customCooldownText then b.customCooldownText:Hide() end
+					SafeCallClean(function()
+						if not spellID then
+							b.spellID = nil
+							b.icon:SetTexture(nil)
+						b.hotkey:SetText("")
+						if b.cooldownVisualKey ~= "empty" then
+							ClearCooldownWidget(b.cooldown, false)
+						end
+						b.cooldownVisualSpellID = nil
+						b.cooldownVisualIgnoreGCD = nil
+						b.cooldownVisualSerial = nil
+						b.cooldownVisualChargeKey = nil
+						b.cooldownVisualKey = "empty"
+						if b.count then
+							b.count:SetText("")
+							b.count:Hide()
+						end
+						if b.customCooldownText then b.customCooldownText:Hide() end
 					HideProcEffects(b)
 					HideFocusPulse(b)
+					if b.transitionPulse then
+						b.transitionPulse:Hide()
+						b.transitionPulse:SetScale(1)
+					end
 					if b.flash then b.flash:Hide() end
 				b.lastSpellID = nil
-				b.lastCooldownActive = nil
-				b.lastReady = nil
-				b.lastProc = nil
-				b.pendingNextReadySpellID = nil
-				b:Hide()
-				return
-			end
+						b.lastCooldownActive = nil
+							b.lastReady = nil
+							b.lastProc = nil
+							b.lastChargeCount = nil
+							b.lastGCDActive = nil
+							b.lastHotkeySpellID = nil
+					b.lastAssistantHotkeyText = nil
+					b.procGraceUntil = nil
+					b.pendingNextReadySpellID = nil
+					b:Hide()
+					return
+				end
 
 			local changed = (b.lastSpellID ~= spellID)
 			b.spellID = spellID
 
-			if local_C_Spell_GetSpellTexture then
-				b.icon:SetTexture(local_C_Spell_GetSpellTexture(spellID))
-		else
-			b.icon:SetTexture(nil)
-		end
+				if local_C_Spell_GetSpellTexture then
+					b.icon:SetTexture(local_C_Spell_GetSpellTexture(spellID))
+			else
+				b.icon:SetTexture(nil)
+				end
 
-		if clean_showKeybind then
-			local text = local_GetKeyBindForSpellID(spellID) or ""
-			b.hotkey:SetText(text)
-			b.hotkey:SetShown(text ~= "")
-		else
-			b.hotkey:SetText("")
-			b.hotkey:Hide()
-		end
+				if b.count then
+					local charges, maxCharges = NS.GetChargeStateForDisplay(spellID)
+					if charges and maxCharges and maxCharges > 1 then
+						b.count:SetText(tostring(charges))
+						if charges == maxCharges then
+							b.count:SetTextColor(1, 0.15, 0.15)
+						else
+							b.count:SetTextColor(1, 1, 1)
+						end
+						b.count:Show()
+					else
+						b.count:SetText("")
+						b.count:Hide()
+					end
+				end
+
+				if clean_showKeybind then
+				local text = GetStableKeybindText(b, spellID, changed)
+				b.hotkey:SetText(text)
+				b.hotkey:SetShown(text ~= "")
+			else
+				b.hotkey:SetText("")
+				b.hotkey:Hide()
+				b.lastHotkeySpellID = nil
+			end
 
 		-- Cooldown update
 		UpdateCooldownForSpell(b, spellID)
@@ -2683,10 +3328,22 @@ function UpdateButton(b, spellID)
 		-- Range, usability and real-cooldown state.
 		local r, g, bColor = 1, 1, 1
 		local desaturated = false
-			local isUsable = true
-			local outOfRange = false
-			local realCooldownActive = IsSpellRealCooldownActive(spellID)
-			local isProc = IsSpellProcHighlighted(spellID)
+				local isUsable = true
+				local outOfRange = false
+					local realCooldownActive = IsSpellRealCooldownActive(spellID)
+					local isProc = IsSpellProcHighlighted(spellID)
+						local now = GetTime()
+						local charges, maxCharges = NS.GetChargeStateForDisplay(spellID)
+						local chargeReadyEvent = charges and maxCharges and maxCharges > 1 and b.lastChargeCount and charges > b.lastChargeCount
+						local gcdActive = not clean_ignoreGCD and gcdStartTime + gcdDuration > now
+						local gcdReadyEvent = b.lastGCDActive == true and not gcdActive
+						if changed then
+							b.procGraceUntil = nil
+						end
+				if isProc then
+					b.procGraceUntil = now + 0.25
+				end
+				local procHasPriority = isProc or (not changed and b.procGraceUntil and b.procGraceUntil > now)
 
 		if clean_enableUsabilityCheck and C_Spell and C_Spell.IsSpellUsable then
 			local ok, usable = pcall(C_Spell.IsSpellUsable, spellID)
@@ -2705,45 +3362,51 @@ function UpdateButton(b, spellID)
 			end
 		end
 
-			if realCooldownActive and not isProc then
-				desaturated = true
-				if isUsable and not outOfRange then
-					r, g, bColor = 0.4, 0.4, 0.4
+				if realCooldownActive and not procHasPriority then
+					desaturated = true
+					if isUsable and not outOfRange then
+						r, g, bColor = 0.4, 0.4, 0.4
+					end
 				end
-			end
 
-			local isReady = (isProc or not realCooldownActive) and isUsable and not outOfRange
+				local isReady = (procHasPriority or not realCooldownActive) and isUsable and not outOfRange
 
 		b.icon:SetVertexColor(r, g, bColor)
 		b.icon:SetDesaturated(desaturated)
 
-					local effectsAllowed = ShouldPlayVisualEffects()
-					local firedNextReady = false
-					if changed then
-						b.pendingNextReadySpellID = effectsAllowed and not isProc and spellID or nil
-					elseif not effectsAllowed or isProc then
-						b.pendingNextReadySpellID = nil
+						local effectsAllowed = ShouldPlayVisualEffects()
+						local firedNextReady = false
+						if changed then
+							b.pendingNextReadySpellID = effectsAllowed and not procHasPriority and spellID or nil
+						elseif not effectsAllowed or procHasPriority then
+							b.pendingNextReadySpellID = nil
+						end
+
+						if effectsAllowed and b.pendingNextReadySpellID == spellID and isReady and not procHasPriority then
+							TriggerButtonTransitionEffect(b, clean_enableFlashOverlay, clean_enableBounceAnim, clean_effectNextReadyPulseEnabled, "White", "White")
+							b.pendingNextReadySpellID = nil
+							firedNextReady = true
+						end
+
+								local firedCooldownReady = false
+								if effectsAllowed and not firedNextReady and not changed and not procHasPriority and isReady and ((b.lastCooldownActive == true and realCooldownActive == false) or chargeReadyEvent) then
+									TriggerButtonTransitionEffect(b, clean_effectReadyFlashEnabled, clean_effectReadyBounceEnabled, clean_effectReadyPulseEnabled, clean_glowReadyColor, "Gold")
+									b.pendingNextReadySpellID = nil
+									firedCooldownReady = true
+								end
+
+									if effectsAllowed and clean_effectGCDReady.enabled and not firedNextReady and not firedCooldownReady and not changed and not procHasPriority and isReady and gcdReadyEvent then
+										TriggerButtonTransitionEffect(b, clean_effectGCDReady.flash, clean_effectGCDReady.bounce, clean_effectGCDReady.pulse, clean_effectGCDReady.color, "White")
+									end
+
+					if effectsAllowed and isProc and (changed or b.lastProc ~= true) then
+						TriggerButtonTransitionEffect(b, clean_effectProcFlashEnabled, clean_effectProcBounceEnabled, false, clean_glowProcColor, "White")
 					end
 
-					if effectsAllowed and b.pendingNextReadySpellID == spellID and isReady and not isProc then
-						TriggerButtonTransitionEffect(b, clean_enableFlashOverlay, clean_enableBounceAnim, clean_effectNextReadyPulseEnabled, "White", "White")
-						b.pendingNextReadySpellID = nil
-						firedNextReady = true
-					end
-
-					if effectsAllowed and not firedNextReady and not changed and not isProc and b.lastCooldownActive == true and realCooldownActive == false and isReady then
-						TriggerButtonTransitionEffect(b, clean_effectReadyFlashEnabled, clean_effectReadyBounceEnabled, clean_effectReadyPulseEnabled, clean_glowReadyColor, "Gold")
-						b.pendingNextReadySpellID = nil
-					end
-
-				if effectsAllowed and isProc and (changed or b.lastProc ~= true) then
-					TriggerButtonTransitionEffect(b, clean_effectProcFlashEnabled, clean_effectProcBounceEnabled, false, clean_glowProcColor, "White")
-				end
-
-				if effectsAllowed and isProc and clean_glowProcEnabled then
-					local procRGB = GetGlowColorRGB(clean_glowProcColor, "White")
-					b.glowR, b.glowG, b.glowB = procRGB[1], procRGB[2], procRGB[3]
-					local procGlowRestart = changed or b.lastProc ~= true or b.procGlowStyle ~= clean_glowProcType
+					if effectsAllowed and procHasPriority and clean_glowProcEnabled then
+						local procRGB = GetGlowColorRGB(clean_glowProcColor, "White")
+						b.glowR, b.glowG, b.glowB = procRGB[1], procRGB[2], procRGB[3]
+						local procGlowRestart = changed or b.lastProc ~= true or b.procGlowStyle ~= clean_glowProcType
 
 					if clean_glowProcType == "focusPulse" then
 						HideProcSweepGlow(b)
@@ -2770,23 +3433,104 @@ function UpdateButton(b, spellID)
 							ShowProcFocusGlow(b, clean_glowProcColor, "White", changed or b.lastProc ~= true or b.procGlowStyle ~= "focusPulse")
 							b.procGlowStyle = "focusPulse"
 						end
-					end
-			else
-				HideProcEffects(b)
+						end
+				else
+					HideProcEffects(b)
+				end
+
+				b.lastSpellID = spellID
+					b.lastCooldownActive = realCooldownActive
+					b.lastReady = isReady
+					b.lastProc = procHasPriority
+					b.lastChargeCount = charges and maxCharges and maxCharges > 1 and charges or nil
+					b.lastGCDActive = gcdActive
+					b:Show()
+				end)
 			end
 
-			b.lastSpellID = spellID
-			b.lastCooldownActive = realCooldownActive
-			b.lastReady = isReady
-			b.lastProc = isProc
-			b:Show()
-		end)
+local function ReadRealCooldownSnapshotForID(api, spellID, now)
+	if not api or not spellID then
+		return nil
 	end
 
-function UpdateAvada()
-	if (not clean_avadaEnabled and not NS.editMode) or not frame.avada then
-		if frame.avada then
-			frame.avada:Hide()
+	local ok, cooldownInfo = pcall(api, spellID)
+	if not ok or type(cooldownInfo) ~= "table" then
+		return nil
+	end
+
+	local startTime = cooldownInfo.startTime
+	local duration = cooldownInfo.duration
+	if not IsCleanNumber(startTime) or not IsCleanNumber(duration) then
+		return nil
+	end
+
+	local isOnGCD = cooldownInfo.isOnGCD
+	if IsCleanBoolean(isOnGCD) and isOnGCD == true then
+		return nil
+	end
+
+	if startTime > 0 and duration > 1.55 then
+		local remaining = startTime + duration - now
+		if remaining > 0 then
+			return startTime, duration, remaining
+		end
+	end
+
+	return nil
+end
+
+local function GetRealCooldownSnapshot(spellID)
+	if not spellID then
+		return false
+	end
+
+	local now = GetTime()
+	local baseID = FindBaseSpellByID(spellID) or spellID
+	local api = local_C_Spell_GetSpellCooldown or (C_Spell and C_Spell.GetSpellCooldown)
+	if api and not InCombatLockdown() then
+		local startTime, duration, remaining = ReadRealCooldownSnapshotForID(api, baseID, now)
+		if startTime then
+			return true, startTime, duration, remaining, "native"
+		end
+		if baseID ~= spellID then
+			startTime, duration, remaining = ReadRealCooldownSnapshotForID(api, spellID, now)
+			if startTime then
+				return true, startTime, duration, remaining, "native"
+			end
+		end
+
+		local known, active, onGCD = GetCleanSpellCooldownState(spellID)
+		if known and (not active or onGCD) then
+			ClearTrackedSpellCooldown(spellID)
+			return false
+		end
+	end
+
+	local remaining = GetCooldownRemainingForText(spellID)
+	if remaining and remaining > 1.55 then
+		local duration = GetSpellCooldownDurationClean(spellID)
+		if not duration or duration <= remaining then
+			duration = remaining
+		end
+		return true, now - (duration - remaining), duration, remaining, "remaining"
+	end
+
+	local cd = activeCooldowns[baseID] or activeCooldowns[spellID]
+	if cd and cd.startTime and cd.duration then
+		local trackedRemaining = cd.startTime + cd.duration - now
+		if trackedRemaining > 0 then
+			return true, cd.startTime, cd.duration, trackedRemaining, "tracked"
+		end
+		ClearTrackedSpellCooldown(spellID)
+	end
+
+	return false
+end
+
+	function UpdateAvada()
+		if (not clean_avadaEnabled and not NS.editMode) or not frame.avada then
+			if frame.avada then
+				frame.avada:Hide()
 		end
 		return
 	end
@@ -2812,6 +3556,13 @@ function UpdateAvada()
 			local unit = data.unit
 			local aType = data.type
 			local id = data.spellID
+			local iconChanged = icon.spellID ~= id or icon.aType ~= aType
+			if iconChanged then
+				icon.lastCooldownActive = nil
+				icon.lastChargeCount = nil
+				icon.spellID = id
+				icon.aType = aType
+			end
 
 			local tex = local_C_Spell_GetSpellTexture(local_AvadaReplacedTexture[id] or id)
 			if aType == "item" then
@@ -2827,9 +3578,14 @@ function UpdateAvada()
 			local countColor = { 1, 1, 1 }
 			local desaturated = false
 			local cooldownHandled = false
-			local cooldownIsZero = false
-			local cooldownReadyCached = false
-			local cooldownRemaining
+				local cooldownIsZero = false
+				local cooldownReadyCached = false
+				local cooldownRemaining
+				local useNativeCooldownText = false
+				local avadaCooldownActive = false
+				local chargeReadyEvent = false
+				local chargeHasUsableStack = false
+				local chargeDisplayCount = nil
 
 			if aType == "buff" or aType == "debuff" then
 				local filter = (aType == "debuff") and "HARMFUL" or "HELPFUL"
@@ -2847,90 +3603,157 @@ function UpdateAvada()
 				else
 					desaturated = true
 				end
-			elseif aType == "cd" then
-				local charges, maxCharges = GetCleanSpellCharges(id)
-				if charges and maxCharges and maxCharges > 1 then
-					countText = charges
-				end
-
-				local preferChargeCooldown = charges and maxCharges and maxCharges > 1 and charges < maxCharges
-				local durationobj
-				if preferChargeCooldown then
-					durationobj = TryGetSpellChargeDurationObject(id)
-					if durationobj and IsDurationObjectZero(durationobj) == false then
-						cooldownRemaining = GetCooldownRemainingForText(id)
+				elseif aType == "cd" then
+					local now = GetTime()
+					local charges, maxCharges, chargeStartTime, chargeDuration = NS.GetChargeStateForDisplay(id)
+					if charges and maxCharges and maxCharges > 1 then
+						countText = tostring(charges)
+						chargeDisplayCount = charges
+						chargeHasUsableStack = charges > 0
+						chargeReadyEvent = icon.lastChargeCount and charges > icon.lastChargeCount
 					end
-				end
 
-				if not durationobj then
-					cooldownRemaining = GetCooldownRemainingForText(id)
-				end
+					local preferChargeCooldown = charges and maxCharges and maxCharges > 1 and charges < maxCharges
+					local chargeKey = GetChargeCooldownKey(charges, maxCharges, chargeStartTime, chargeDuration)
+					local realActive, realStart, realDuration, realRemaining, realSource = GetRealCooldownSnapshot(id)
+					local durationobj
+					if preferChargeCooldown then
+						if not (chargeStartTime and chargeDuration and chargeDuration > 0) then
+							durationobj = TryGetSpellChargeDurationObject(id)
+						end
+					else
+						durationobj = TryGetSpellCooldownDurationObject(id, true)
+					end
+					local durationZero = durationobj and IsDurationObjectZero(durationobj)
 
-				if not durationobj and cooldownRemaining and cooldownRemaining > 1.55 then
-					durationobj = GetActionDurationObjectForSpell(id, preferChargeCooldown)
-				end
-				if not durationobj and cooldownRemaining and cooldownRemaining > 1.55 then
-					durationobj = TryGetSpellCooldownDurationObject(id, true)
-				end
-				if not durationobj and cooldownRemaining and cooldownRemaining > 1.55 then
-					durationobj = TryGetSpellCooldownDurationObject(id, false)
-				end
+					if preferChargeCooldown then
+						realActive = true
+						NS.NoteChargeDurationObjectState(id, durationZero)
+						if chargeStartTime and chargeDuration then
+							realStart = chargeStartTime
+							realDuration = chargeDuration
+						end
+					end
 
-				if durationobj and (preferChargeCooldown or (cooldownRemaining and cooldownRemaining > 1.55)) then
-					local durationZero = IsDurationObjectZero(durationobj)
-					local cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":active"
-					if durationZero == false then
-						cooldownHandled = true
-						desaturated = true
-						countColor = { 1, 1, 1 }
-						if icon.cooldownVisualKey ~= cooldownKey then
-							local ok = pcall(icon.cooldown.SetCooldownFromDurationObject, icon.cooldown, durationobj)
-							if ok then
+					if durationobj and durationZero == false then
+						realActive = true
+						realSource = "duration"
+					elseif durationobj and durationZero == true then
+						if preferChargeCooldown and chargeStartTime and chargeDuration and chargeDuration > 0 then
+							durationobj = nil
+							durationZero = nil
+						else
+							realActive = false
+							realSource = "duration"
+							cooldownIsZero = true
+							ClearTrackedSpellCooldown(id)
+						end
+					elseif durationobj and durationZero == nil then
+						durationobj = nil
+					end
+
+					if preferChargeCooldown then
+						cooldownRemaining = GetChargeCooldownRemainingForText(id)
+					elseif realSource ~= "tracked" then
+						cooldownRemaining = realRemaining
+					end
+					cooldownRemaining = cooldownRemaining or GetCooldownRemainingForText(id)
+					if (not cooldownRemaining or cooldownRemaining <= 0) and realStart and realDuration and (preferChargeCooldown or realSource ~= "tracked" or not durationobj) then
+						local remaining = realStart + realDuration - now
+						if remaining > 0 then
+							cooldownRemaining = remaining
+						end
+					end
+
+					local hasChargeLedgerCooldown = preferChargeCooldown and chargeStartTime and chargeDuration and chargeDuration > 0
+					if realActive and not durationobj and not hasChargeLedgerCooldown then
+						durationobj = GetActionDurationObjectForSpell(id, preferChargeCooldown)
+						durationZero = durationobj and IsDurationObjectZero(durationobj)
+						if durationZero == nil then
+							durationobj = nil
+						end
+					end
+					if realActive and not durationobj and not hasChargeLedgerCooldown then
+						durationobj = TryGetSpellCooldownDurationObject(id, true)
+						durationZero = durationobj and IsDurationObjectZero(durationobj)
+						if durationZero == nil then
+							durationobj = nil
+						end
+					end
+
+					if durationobj and durationZero == true then
+						if preferChargeCooldown and chargeStartTime and chargeDuration and chargeDuration > 0 then
+							durationobj = nil
+							durationZero = nil
+						else
+							realActive = false
+							cooldownIsZero = true
+							ClearTrackedSpellCooldown(id)
+						end
+					end
+
+					if realActive then
+						avadaCooldownActive = not (preferChargeCooldown and chargeHasUsableStack)
+						local fallbackKey = ""
+						if realStart and realDuration then
+							fallbackKey = ":" .. tostring(Round(realStart * 10)) .. ":" .. tostring(Round(realDuration * 10))
+						end
+						local cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":" .. tostring(chargeKey or "nocharge") .. ":" .. tostring(realSource or "unknown") .. fallbackKey .. ":active"
+						local refreshDue = (icon.cooldownVisualKey ~= cooldownKey) or not icon.cooldownVisualNextRefresh or icon.cooldownVisualNextRefresh <= now
+						if durationobj and durationZero == false then
+							cooldownHandled = true
+							desaturated = avadaCooldownActive
+							countColor = { 1, 1, 1 }
+							if refreshDue then
+								local ok = pcall(icon.cooldown.SetCooldownFromDurationObject, icon.cooldown, durationobj)
+								if ok then
+									icon.cooldownVisualKey = cooldownKey
+									icon.cooldownVisualSerial = nil
+									icon.cooldownVisualNextRefresh = now + DURATION_OBJECT_REPAINT_INTERVAL
+								else
+									cooldownHandled = false
+									desaturated = false
+									icon.cooldownVisualKey = nil
+									icon.cooldownVisualSerial = nil
+									icon.cooldownVisualNextRefresh = nil
+								end
+							end
+						elseif realStart and realDuration and realDuration > 0 then
+							cooldownHandled = true
+							desaturated = avadaCooldownActive
+							countColor = { 1, 1, 1 }
+							if refreshDue then
+								icon.cooldown:SetReverse(false)
+								SafeSetCooldown(icon.cooldown, realStart, realDuration)
+								ApplyCooldownSweepColor(icon.cooldown)
+								icon.cooldown:SetDrawSwipe(true)
+								icon.cooldown:Show()
 								icon.cooldownVisualKey = cooldownKey
 								icon.cooldownVisualSerial = nil
-							else
-								cooldownHandled = false
-								desaturated = false
-								icon.cooldownVisualKey = nil
-								icon.cooldownVisualSerial = nil
+								icon.cooldownVisualNextRefresh = nil
 							end
+						else
+							cooldownHandled = false
+							desaturated = false
 						end
 					else
 						cooldownHandled = true
 						cooldownIsZero = true
 						desaturated = false
-						cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":ready"
+						local cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":" .. tostring(chargeKey or "nocharge") .. ":ready"
+						if charges and maxCharges and charges == maxCharges then
+							countColor = { 1, 0, 0 }
+						end
 						if icon.cooldownVisualKey ~= cooldownKey then
 							ClearCooldownWidget(icon.cooldown, true)
 							icon.cooldownVisualKey = cooldownKey
 							icon.cooldownVisualSerial = nil
+							icon.cooldownVisualNextRefresh = nil
 						else
 							cooldownReadyCached = true
 						end
 					end
-				elseif cooldownRemaining and cooldownRemaining > 1.55 then
-					local start, dur = GetSpellCooldownClean(id)
-					if start and dur and start > 0 and dur > 0 then
-						startTime, duration = start, dur
-						desaturated = true
-					end
-				else
-					cooldownHandled = true
-					cooldownIsZero = true
-					desaturated = false
-					local cooldownKey = tostring(id) .. ":" .. tostring(preferChargeCooldown) .. ":ready"
-					if charges and maxCharges and charges == maxCharges then
-						countColor = { 1, 0, 0 }
-					end
-					if icon.cooldownVisualKey ~= cooldownKey then
-						ClearCooldownWidget(icon.cooldown, true)
-						icon.cooldownVisualKey = cooldownKey
-						icon.cooldownVisualSerial = nil
-					else
-						cooldownReadyCached = true
-					end
-				end
-			elseif aType == "item" then
+				elseif aType == "item" then
 				local count = local_C_Item_GetItemCount and local_C_Item_GetItemCount(id)
 				if IsCleanNumber(count) and count > 1 then
 					countText = count
@@ -2941,26 +3764,30 @@ function UpdateAvada()
 					startTime, duration = start, dur
 					desaturated = true
 				end
-			end
-
-			icon.icon:SetDesaturated(desaturated)
-			icon.count:SetText(countText)
-			icon.count:SetTextColor(unpack(countColor))
-			if icon.customCooldownText then
-				if clean_avadaCustomCooldownText and aType == "cd" and cooldownRemaining and cooldownRemaining > 0 and ApplyCustomCooldownText(icon.customCooldownText, cooldownRemaining) then
-					icon.cooldown:SetHideCountdownNumbers(true)
-				else
-					icon.customCooldownText:Hide()
-					icon.cooldown:SetHideCountdownNumbers(true)
 				end
-			end
 
-			if cooldownHandled then
-				if not cooldownReadyCached then
-					icon.cooldown:SetReverse(false)
-					icon.cooldown:SetHideCountdownNumbers(true)
-					icon.cooldown:SetDrawSwipe(not cooldownIsZero)
-					icon.cooldown:Show()
+				icon.icon:SetDesaturated(desaturated)
+				icon.count:SetText(countText)
+				icon.count:SetTextColor(unpack(countColor))
+				if icon.customCooldownText then
+					if clean_avadaCustomCooldownText and aType == "cd" and cooldownRemaining and cooldownRemaining > 0 and ApplyCustomCooldownText(icon.customCooldownText, cooldownRemaining) then
+						icon.cooldown:SetHideCountdownNumbers(true)
+					elseif clean_avadaCustomCooldownText and aType == "cd" and cooldownHandled and not cooldownIsZero then
+						icon.customCooldownText:Hide()
+						useNativeCooldownText = true
+						ApplyAvadaCooldownCountdownFont(icon.cooldown)
+					else
+						icon.customCooldownText:Hide()
+						icon.cooldown:SetHideCountdownNumbers(true)
+					end
+				end
+
+				if cooldownHandled then
+					if not cooldownReadyCached then
+						icon.cooldown:SetReverse(false)
+						icon.cooldown:SetHideCountdownNumbers(not useNativeCooldownText)
+						icon.cooldown:SetDrawSwipe(not cooldownIsZero)
+						icon.cooldown:Show()
 					if not cooldownIsZero then
 						ApplyCooldownSweepColor(icon.cooldown)
 					end
@@ -2969,37 +3796,77 @@ function UpdateAvada()
 				if startTime and duration and duration > 0 then
 					icon.cooldown:SetReverse(aType == "buff" or aType == "debuff")
 					SafeSetCooldown(icon.cooldown, startTime, duration)
-					icon.cooldown:Show()
-					icon.cooldownVisualKey = nil
-					icon.cooldownVisualSerial = nil
-				else
-					local clearKey = "clear:" .. tostring(aType) .. ":" .. tostring(id)
-					if icon.cooldownVisualKey ~= clearKey or icon.cooldownVisualSerial ~= cooldownVisualSerial then
-						ClearCooldownWidget(icon.cooldown, true)
-						icon.cooldownVisualKey = clearKey
-						icon.cooldownVisualSerial = cooldownVisualSerial
+						icon.cooldown:Show()
+						icon.cooldownVisualKey = nil
+						icon.cooldownVisualSerial = nil
+						icon.cooldownVisualNextRefresh = nil
+						else
+							local clearKey = "clear:" .. tostring(aType) .. ":" .. tostring(id)
+							if icon.cooldownVisualKey ~= clearKey then
+								ClearCooldownWidget(icon.cooldown, true)
+								icon.cooldownVisualKey = clearKey
+								icon.cooldownVisualSerial = nil
+								icon.cooldownVisualNextRefresh = nil
+							end
 					end
 				end
-			end
 
-			icon:Show()
-		elseif NS.editMode and i <= GetAvadaIconCount() then
-			icon.icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
-			icon.icon:SetDesaturated(true)
-			icon.count:SetText("")
-			icon.count:SetTextColor(1, 1, 1)
-			ClearCooldownWidget(icon.cooldown, true)
-			icon.cooldownVisualKey = nil
-			icon.cooldownVisualSerial = nil
+				if aType == "cd" then
+					local effectsAllowed = ShouldPlayVisualEffects()
+					if effectsAllowed and ((icon.lastCooldownActive == true and avadaCooldownActive == false) or chargeReadyEvent) then
+						TriggerButtonTransitionEffect(icon, clean_avadaEffectReadyFlashEnabled, clean_avadaEffectReadyBounceEnabled, clean_avadaEffectReadyPulseEnabled, clean_avadaEffectReadyColor, "Gold")
+					end
+					icon.lastCooldownActive = avadaCooldownActive
+					icon.lastChargeCount = chargeDisplayCount
+				else
+					icon.lastCooldownActive = nil
+					icon.lastChargeCount = nil
+				end
+				UpdateTransitionAnimations(icon, GetTime())
+				icon:Show()
+			elseif NS.editMode and i <= GetAvadaIconCount() then
+				icon.icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
+				icon.icon:SetDesaturated(true)
+				icon.count:SetText("")
+				icon.count:SetTextColor(1, 1, 1)
+				ClearCooldownWidget(icon.cooldown, true)
+				icon.cooldownVisualKey = nil
+				icon.cooldownVisualSerial = nil
+				icon.cooldownVisualNextRefresh = nil
 			if icon.customCooldownText then
 				icon.customCooldownText:Hide()
+			end
+			icon.lastCooldownActive = nil
+			icon.lastChargeCount = nil
+			icon.spellID = nil
+			icon.aType = nil
+			if icon.flash then
+				icon.flash:Hide()
+			end
+			HideFocusPulse(icon)
+			if icon.transitionPulse then
+				icon.transitionPulse:Hide()
+				icon.transitionPulse:SetScale(1)
 			end
 			icon:Show()
 		else
 			icon.cooldownVisualKey = nil
 			icon.cooldownVisualSerial = nil
+			icon.cooldownVisualNextRefresh = nil
 			if icon.customCooldownText then
 				icon.customCooldownText:Hide()
+			end
+			icon.lastCooldownActive = nil
+			icon.lastChargeCount = nil
+			icon.spellID = nil
+			icon.aType = nil
+			if icon.flash then
+				icon.flash:Hide()
+			end
+			HideFocusPulse(icon)
+			if icon.transitionPulse then
+				icon.transitionPulse:Hide()
+				icon.transitionPulse:SetScale(1)
 			end
 			icon:Hide()
 		end
@@ -3227,8 +4094,12 @@ local function EnsureEditUI()
 	panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	panel.title:SetPoint("TOPLEFT", 14, -12)
 
-	local close = NS.CreateFrame("Button", nil, panel, "UIPanelCloseButton")
-	close:SetPoint("TOPRIGHT", -4, -4)
+		local close = NS.CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+		close:SetSize(26, 26)
+		close:ClearAllPoints()
+		close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
+		close:SetFrameStrata("DIALOG")
+		close:SetFrameLevel(panel:GetFrameLevel() + 40)
 
 	local exit = NS.CreateFrame("Button", "ButtonAssistantEnchancedExitEditButton", NS.UIParent, "UIPanelButtonTemplate")
 	exit:SetSize(132, 24)
@@ -3631,6 +4502,23 @@ local function PrimeDisplayedKeybindCache()
 		PrimeKeybindCacheForSpell(frame.button.spellID)
 	end
 
+	if GetActionInfo then
+		for slot = 1, 168 do
+			local actionType, id = GetActionInfo(slot)
+			if actionType == "spell" and id then
+				PrimeKeybindCacheForSpell(id)
+			elseif actionType == "macro" and id then
+				local _, _, spellID = GetMacroSpell(id)
+				if spellID then
+					PrimeKeybindCacheForSpell(spellID)
+				end
+			end
+		end
+	end
+	if NS.GetAssistantKeyBind then
+		pcall(NS.GetAssistantKeyBind)
+	end
+
 	if NS.C_AssistedCombat_GetRotationSpells then
 		local ok, spells = pcall(NS.C_AssistedCombat_GetRotationSpells)
 		if ok and spells then
@@ -3662,6 +4550,9 @@ local function DelayedUpdateKeybindings(wipeKeybindCache)
 		allTimer:Cancel()
 	end
 	ClearActionSlotCache()
+	if NS.WipeAssistantKeybindCache and not InCombatLockdown() then
+		NS.WipeAssistantKeybindCache()
+	end
 	if wipeKeybindCache then
 		if InCombatLockdown() then
 			keybindRefreshPending = true
@@ -3673,6 +4564,9 @@ local function DelayedUpdateKeybindings(wipeKeybindCache)
 		if not InCombatLockdown() and keybindRefreshPending then
 			if NS.WipeKeybindCache then
 				NS.WipeKeybindCache()
+			end
+			if NS.WipeAssistantKeybindCache then
+				NS.WipeAssistantKeybindCache()
 			end
 			keybindRefreshPending = nil
 		end
@@ -3729,6 +4623,10 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 				NS.db.effectReadyBounceEnabled = false
 				NS.db.effectProcFlashEnabled = false
 				NS.db.effectProcBounceEnabled = false
+				NS.db.avadaEffectReadyFlashEnabled = true
+				NS.db.avadaEffectReadyPulseEnabled = true
+				NS.db.avadaEffectReadyBounceEnabled = false
+				NS.db.avadaEffectReadyColor = "Gold"
 				NS.db.effectModelVersion = EFFECT_MODEL_VERSION
 			end
 
@@ -3763,10 +4661,11 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 
 			RegisterAssistedCombatEvents() -- Hook into Blizzard's internal events
 
-			NS.UpdateLayout()
-			NS.UpdateVisibility() -- Call UpdateVisibility after layout
-				DelayedUpdateKeybindings(false) -- Ensure hotkeys are scanned after bars are ready
-			return
+					NS.UpdateLayout()
+					NS.UpdateVisibility() -- Call UpdateVisibility after layout
+					NS.RefreshWatchedChargeLedgers()
+					DelayedUpdateKeybindings(false) -- Ensure hotkeys are scanned after bars are ready
+				return
 		end
 
 			if event == "UNIT_SPELLCAST_SUCCEEDED" then
@@ -3784,33 +4683,34 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 
 					-- Track spell cooldowns for in-combat dimming
 				-- (DurationObject handles sweep display, but we need activeCooldowns
-				-- cache to know if a spell has real CD for desaturation purposes)
-				local capturedSpellID = spellID
-				local capturedGCDStart = gcdStartTime
-				if NS.C_Timer_After then
-					NS.C_Timer_After(0, function()
+					-- cache to know if a spell has real CD for desaturation purposes)
+					local capturedSpellID = spellID
+					local capturedGCDStart = gcdStartTime
+					NS.NoteSpellChargeCast(capturedSpellID, capturedGCDStart)
+					if NS.C_Timer_After then
+						NS.C_Timer_After(0, function()
+							QueueTrackedSpellCooldown(capturedSpellID, capturedGCDStart)
+							NS.RefreshChargeLedgerFromSpell(capturedSpellID)
+						end)
+						NS.C_Timer_After(0.08, function()
+							NS.RefreshChargeLedgerFromSpell(capturedSpellID)
+						end)
+					else
 						QueueTrackedSpellCooldown(capturedSpellID, capturedGCDStart)
-					end)
-				else
-					QueueTrackedSpellCooldown(capturedSpellID, capturedGCDStart)
+						NS.RefreshChargeLedgerFromSpell(capturedSpellID)
+					end
 				end
-			end
-		end
+					end
 
-			if event == "ASSISTED_COMBAT_ACTION_SPELL_CAST" then
-				local now = GetTime()
-				gcdStartTime = now
-				gcdDuration = GetGCDDurationClean()
-				InvalidateCooldownVisuals()
-				if NS.C_Timer_After then
-					NS.C_Timer_After((gcdDuration or 0) + 0.03, function()
-						InvalidateCooldownVisuals()
-					end)
+				if event == "ASSISTED_COMBAT_ACTION_SPELL_CAST" then
+					if NS.C_Timer_After then
+						NS.C_Timer_After(0, NS.UpdateNow)
+					else
+						NS.UpdateNow()
+					end
 				end
-				NS.UpdateNow()
-			end
 
-		-- Any binding/bar changes => wipe cache + refresh (debounced)
+			-- Any binding/bar changes => wipe cache + refresh (debounced)
 		if event == "UPDATE_BINDINGS" or event == "ACTIONBAR_SLOT_CHANGED" or event == "SPELLS_CHANGED" or event == "ACTIONBAR_PAGE_CHANGED" or event == "UPDATE_BONUS_ACTIONBAR" or event == "UPDATE_VEHICLE_ACTIONBAR" or event == "UPDATE_OVERRIDE_ACTIONBAR" or event == "ACTIONBAR_UPDATE_STATE" or event == "PLAYER_TALENT_UPDATE" or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "UPDATE_SHAPESHIFT_FORM" or event == "TRAIT_CONFIG_UPDATED" or event == "ACTIVE_PLAYER_SPECIALIZATION_CHANGED" then
 			if event == "TRAIT_CONFIG_UPDATED" or event == "ACTIVE_PLAYER_SPECIALIZATION_CHANGED" or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "PLAYER_TALENT_UPDATE" then
 				NS.RefreshAvadaCachedData()
@@ -3824,6 +4724,7 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 				NS.UpdateVisibility()
 				if event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_ENTERING_WORLD" then
 					ScanAllCooldowns() -- Sync and cache all cooldowns when leaving combat or entering world!
+					NS.RefreshWatchedChargeLedgers()
 					DelayedUpdateKeybindings(false)
 				end
 		end
@@ -3833,12 +4734,14 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 			NS.UpdateVisibility()
 		end
 
-		-- Cooldown Updates
-		if event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_CHARGES" or event == "ACTIONBAR_UPDATE_COOLDOWN" then
-			NS.UpdateNow()
-			if not InCombatLockdown() then
-				ScanAllCooldowns()
-			end
+			-- Cooldown Updates
+			if event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_CHARGES" or event == "ACTIONBAR_UPDATE_COOLDOWN" then
+				NS.RefreshWatchedChargeLedgers()
+				InvalidateCooldownVisuals()
+				NS.UpdateNow()
+				if not InCombatLockdown() then
+					ScanAllCooldowns()
+				end
 		end
 
 		-- Bag Items Cooldown

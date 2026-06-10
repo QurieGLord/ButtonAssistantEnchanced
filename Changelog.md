@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1] - 2026-06-11
+
+This release focuses on making cooldown awareness feel steadier across the main recommendation button and Avada Tracker.
+
+### Highlights
+
+- Improved cooldown display for charge-based abilities, including stack counts and recharge feedback.
+- Refined partial recharge states so available charges stay ready while the next stack continues to recharge.
+- Fixed charge recharge tracking so the global cooldown is not treated as a restored stack.
+- Added separate GCD-finished effect controls for a lighter ready cue after the global cooldown ends.
+- Improved Avada Tracker cooldown handling in combat for regular and charge-based spells.
+- Added cooldown-ready visual feedback options for Avada Tracker icons.
+- Kept next-ready and cooldown-ready effects separate from persistent proc glow styles.
+- Added a Classic Blizzard Dark border style for the main button and Avada Tracker.
+- Refined idle visual behavior to reduce unwanted flicker when no cooldown is active.
+- Updated the release workflow so compact version tags like `v1.1` publish normally.
+
 ## [1.0.1] - 2026-06-04
 
 A smoother layout and feedback pass for players who like their UI to stay where they put it.
