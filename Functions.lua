@@ -7,17 +7,17 @@ local _, NS = ...
 function NS.SafeCall(fn, ...)
 	local ok, err = pcall(fn, ...)
 	if not ok then
-		ButtonAssistantEnchancedDB = ButtonAssistantEnchancedDB or {}
-		ButtonAssistantEnchancedDB.errors = ButtonAssistantEnchancedDB.errors or {}
-		table.insert(ButtonAssistantEnchancedDB.errors, {
+		ButtonAssistantEnhancedDB = ButtonAssistantEnhancedDB or {}
+		ButtonAssistantEnhancedDB.errors = ButtonAssistantEnhancedDB.errors or {}
+		table.insert(ButtonAssistantEnhancedDB.errors, {
 			time = date("%H:%M:%S"),
 			err = tostring(err),
 			stack = debugstack and debugstack(2, 10, 2) or "no stack"
 		})
-		if #ButtonAssistantEnchancedDB.errors > 20 then
-			table.remove(ButtonAssistantEnchancedDB.errors, 1)
+		if #ButtonAssistantEnhancedDB.errors > 20 then
+			table.remove(ButtonAssistantEnhancedDB.errors, 1)
 		end
-		print("|cff4e84b1[Button Assistant Enchanced Error]|r " .. tostring(err))
+		print("|cff4e84b1[Button Assistant Enhanced Error]|r " .. tostring(err))
 	end
 	return ok
 end

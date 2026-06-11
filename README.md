@@ -1,14 +1,14 @@
-# Button Assistant Enchanced
+# Button Assistant Enhanced
 
 <p align="center">
-  <img src="Media/ButtonAssistantEnchanced_icon_256.png" width="132" alt="Button Assistant Enchanced icon">
+  <img src="Media/ButtonAssistantEnhanced_icon_256.png" width="132" alt="Button Assistant Enhanced icon">
 </p>
 
 <p align="center">
-  <img src="docs/demo.webp" alt="Button Assistant Enchanced gameplay demo">
+  <img src="docs/demo.webp" alt="Button Assistant Enhanced gameplay demo">
 </p>
 
-**Button Assistant Enchanced** is a polished visual companion for Blizzard's Assisted Combat feature in modern World of Warcraft Retail. It gives the default recommendation system the kind of readable, responsive, and customizable feedback that makes relaxed gameplay feel smooth instead of vague.
+**Button Assistant Enhanced** is a polished visual companion for Blizzard's Assisted Combat feature in modern World of Warcraft Retail. It gives the default recommendation system the kind of readable, responsive, and customizable feedback that makes relaxed gameplay feel smooth instead of vague.
 
 It is built for players who want to lean back, enjoy the fight, maybe embrace a little beer-friendly gameplay, and still understand exactly what the assistant is suggesting, what is on cooldown, and when a proc deserves attention.
 
@@ -27,28 +27,32 @@ It is built for players who want to lean back, enjoy the fight, maybe embrace a 
 
 ## Why It Exists
 
-Blizzard's Assisted Combat is useful, but its presentation can feel too quiet for repeated moment-to-moment play. Button Assistant Enchanced keeps the assistant simple while adding stronger visual rhythm: a clear suggested spell, readable cooldown state, tasteful effects, and enough configuration to make it fit your UI.
+Blizzard's Assisted Combat is useful, but its presentation can feel too quiet for repeated moment-to-moment play. Button Assistant Enhanced keeps the assistant simple while adding stronger visual rhythm: a clear suggested spell, readable cooldown state, tasteful effects, and enough configuration to make it fit your UI.
 
 The goal is not to turn combat into a dashboard. The goal is to make the assistant feel like it belongs in a modern UI.
+
+## Credits
+
+Special thanks to [Kkthnx](https://github.com/Kkthnx-Wow/BetterButtonAssistant), the author of **Better Button Assistant**, for the original inspiration and foundation that helped make this project possible.
 
 ## Installation
 
 1. Download or clone this repository.
-2. Place the `ButtonAssistantEnchanced` folder into:
+2. Place the `ButtonAssistantEnhanced` folder into:
 
    ```text
    World of Warcraft/_retail_/Interface/AddOns/
    ```
 
 3. Restart the game or run `/reload`.
-4. Enable **Button Assistant Enchanced** in the AddOns list.
+4. Enable **Button Assistant Enhanced** in the AddOns list.
 
 ## Commands
 
 ```text
-/buttonassistantenchanced
+/buttonassistantenhanced
 /bae
-/baenchanced
+/baenhanced
 ```
 
 Open the addon settings.
@@ -96,4 +100,4 @@ The settings panel is split into focused sections:
 
 ## Notes
 
-Button Assistant Enchanced is designed for Retail Assisted Combat and current Retail UI APIs. Classic clients and private/emulated environments are not expected to provide the same behavior.
+Button Assistant Enhanced is designed for Retail Assisted Combat and current Retail UI APIs. Classic clients and private/emulated environments are not expected to provide the same behavior.

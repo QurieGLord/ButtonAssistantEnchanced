@@ -1,4 +1,4 @@
--- ButtonAssistantEnchanced
+-- ButtonAssistantEnhanced
 -- Shows Blizzard Assisted Combat recommendations + keybinds (no Ace3)
 
 local ADDON_NAME, NS = ...
@@ -14,7 +14,7 @@ local UpdateAvada
 local function SafeCallClean(fn, ...)
 	local ok, err = pcall(fn, ...)
 	if not ok then
-		print("|cff4e84b1[Button Assistant Enchanced Clean Error]|r " .. tostring(err))
+		print("|cff4e84b1[Button Assistant Enhanced Clean Error]|r " .. tostring(err))
 	end
 	return ok
 end
@@ -119,14 +119,14 @@ local function GetSpellBaseDurationClean(baseID)
 		local isHasted = (baseCD < 60000)
 		return baseCD / 1000, isHasted
 	end
-	
+
 	return 0, false
 end
 
 local function CacheSpellCooldown(spellID)
 	if not spellID or InCombatLockdown() then return end
 	if not C_Spell or not C_Spell.GetSpellCooldown then return end
-	
+
 	local baseID = FindBaseSpellByID(spellID) or spellID
 	if NS.RefreshChargeLedgerFromSpell then
 		NS.RefreshChargeLedgerFromSpell(baseID)
@@ -135,24 +135,24 @@ local function CacheSpellCooldown(spellID)
 		end
 	end
 	local cd = C_Spell.GetSpellCooldown(baseID)
-	
+
 	-- 1. If currently on cooldown, populate activeCooldowns AND cache the duration
 	if cd and cd.startTime and cd.duration and cd.duration > 1.5 then
 		activeCooldowns[baseID] = {
 			startTime = cd.startTime,
 			duration = cd.duration
 		}
-		
+
 		local haste = NS.GetCleanHasteValue() or 0
 		local unhastedDuration = cd.duration * (1 + haste / 100)
 		local isHasted = (unhastedDuration < 60)
-		
+
 		cachedBaseCooldowns[baseID] = {
 			baseDuration = unhastedDuration,
 			haste = isHasted
 		}
 	end
-	
+
 	-- 2. If it has charges, cache the charge duration
 	if C_Spell.GetSpellCharges then
 		local chargesInfo = C_Spell.GetSpellCharges(baseID)
@@ -160,14 +160,14 @@ local function CacheSpellCooldown(spellID)
 			local haste = NS.GetCleanHasteValue() or 0
 			local unhastedDuration = chargesInfo.cooldownDuration * (1 + haste / 100)
 			local isHasted = (unhastedDuration < 60)
-			
+
 			cachedBaseCooldowns[baseID] = {
 				baseDuration = unhastedDuration,
 				haste = isHasted
 			}
 		end
 	end
-	
+
 	-- 3. If still not in cachedBaseCooldowns, populate using GetSpellBaseDurationClean
 	if not cachedBaseCooldowns[baseID] then
 		local baseCD, isHasted = GetSpellBaseDurationClean(baseID)
@@ -187,7 +187,7 @@ end
 local function ScanSpellBookCooldowns()
 	if InCombatLockdown() then return end
 	if not C_SpellBook or not C_SpellBook.GetNumSpellBookSkillLines then return end
-	
+
 	pcall(function()
 		local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
 		for skillLineIndex = 1, numSkillLines do
@@ -226,11 +226,11 @@ end
 
 local function ScanAllCooldowns()
 	if InCombatLockdown() then return end
-	
+
 	-- 1. Scan spellbook and action bars
 	ScanSpellBookCooldowns()
 	ScanActionBarCooldowns()
-	
+
 	-- 2. Scan Avada Tracker spells
 	local list = local_GetAvadaTargetList and local_GetAvadaTargetList()
 	if list then
@@ -240,7 +240,7 @@ local function ScanAllCooldowns()
 			end
 		end
 	end
-	
+
 	-- 3. Scan current recommended spell
 	if cleanRecommendedSpellID then
 		CacheSpellCooldown(cleanRecommendedSpellID)
@@ -250,7 +250,7 @@ end
 local function GetSpellCooldownDurationClean(spellID)
 	if not spellID then return 0 end
 	local baseID = FindBaseSpellByID(spellID) or spellID
-	
+
 	local cached = cachedBaseCooldowns[baseID] or (baseID ~= spellID and cachedBaseCooldowns[spellID])
 	if cached and cached.baseDuration and cached.baseDuration > 0 then
 		if cached.haste then
@@ -259,7 +259,7 @@ local function GetSpellCooldownDurationClean(spellID)
 			return cached.baseDuration
 		end
 	end
-	
+
 	-- Double fallback: if not in cache (e.g. dynamically learned or custom cast)
 	local baseCD, isHasted = GetSpellBaseDurationClean(baseID)
 	if baseCD and baseCD > 0 then
@@ -269,7 +269,7 @@ local function GetSpellCooldownDurationClean(spellID)
 			return baseCD
 		end
 	end
-	
+
 	return 0
 end
 
@@ -532,8 +532,8 @@ end
 -- ---------------------------------------------------------------------
 -- UI
 -- ---------------------------------------------------------------------
-local addonFrame = NS.CreateFrame("Frame", "ButtonAssistantEnchancedEventFrame")
-local frame = NS.CreateFrame("Frame", "ButtonAssistantEnchancedFrame", NS.UIParent, "BackdropTemplate")
+local addonFrame = NS.CreateFrame("Frame", "ButtonAssistantEnhancedEventFrame")
+local frame = NS.CreateFrame("Frame", "ButtonAssistantEnhancedFrame", NS.UIParent, "BackdropTemplate")
 NS.frame = frame
 
 frame:SetPoint("CENTER", NS.UIParent, "CENTER", 0, -120)
@@ -2591,10 +2591,10 @@ local function OnButtonUpdate(self, elapsed)
 		self.timeSinceLastUpdate = (self.timeSinceLastUpdate or 0) + elapsed
 		if self.timeSinceLastUpdate >= 0.05 then
 			self.timeSinceLastUpdate = 0
-			
+
 			-- Render suggestion button using cleanRecommendedSpellID
 			UpdateButton(self, cleanRecommendedSpellID)
-			
+
 			-- Update Avada Tracker (runs in the clean rendering thread!)
 			UpdateAvada()
 		end
@@ -2917,7 +2917,7 @@ end
 
 function NS.UpdateAvadaLayout()
 	if not frame.avada then
-		frame.avada = NS.CreateFrame("Frame", "ButtonAssistantEnchancedAvadaFrame", NS.UIParent, "BackdropTemplate")
+		frame.avada = NS.CreateFrame("Frame", "ButtonAssistantEnhancedAvadaFrame", NS.UIParent, "BackdropTemplate")
 		frame.avada.icons = {}
 		frame.avada:SetMovable(true)
 		frame.avada:SetClampedToScreen(true)
@@ -3887,7 +3887,7 @@ local function EnsureEditUI()
 	local ui = {}
 	editUI = ui
 
-	local overlay = NS.CreateFrame("Frame", "ButtonAssistantEnchancedEditOverlay", NS.UIParent)
+	local overlay = NS.CreateFrame("Frame", "ButtonAssistantEnhancedEditOverlay", NS.UIParent)
 	overlay:SetAllPoints(NS.UIParent)
 	overlay:SetFrameStrata("BACKGROUND")
 	overlay:SetFrameLevel(500)
@@ -4070,7 +4070,7 @@ local function EnsureEditUI()
 	ui.mainHandle = makeHandle("main", "Main Button")
 	ui.avadaHandle = makeHandle("avada", "Avada Tracker")
 
-	local panel = NS.CreateFrame("Frame", "ButtonAssistantEnchancedEditPanel", NS.UIParent, "BackdropTemplate")
+	local panel = NS.CreateFrame("Frame", "ButtonAssistantEnhancedEditPanel", NS.UIParent, "BackdropTemplate")
 	panel:SetSize(310, 510)
 	panel:SetPoint("CENTER", NS.UIParent, "CENTER", 340, 0)
 	panel:SetFrameStrata("DIALOG")
@@ -4101,7 +4101,7 @@ local function EnsureEditUI()
 		close:SetFrameStrata("DIALOG")
 		close:SetFrameLevel(panel:GetFrameLevel() + 40)
 
-	local exit = NS.CreateFrame("Button", "ButtonAssistantEnchancedExitEditButton", NS.UIParent, "UIPanelButtonTemplate")
+	local exit = NS.CreateFrame("Button", "ButtonAssistantEnhancedExitEditButton", NS.UIParent, "UIPanelButtonTemplate")
 	exit:SetSize(132, 24)
 	exit:SetPoint("TOP", NS.UIParent, "TOP", 0, -18)
 	exit:SetFrameStrata("DIALOG")
@@ -4374,7 +4374,7 @@ end
 
 function NS.SetEditMode(enabled)
 	if enabled and InCombatLockdown() then
-		print("|cff4e84b1[Button Assistant Enchanced]|r Layout edit mode is unavailable in combat.")
+		print("|cff4e84b1[Button Assistant Enhanced]|r Layout edit mode is unavailable in combat.")
 		return
 	end
 
@@ -4394,7 +4394,7 @@ function NS.SetEditMode(enabled)
 			ui.exitButton:Show()
 		end
 		ui.updateHandles()
-		print("|cff4e84b1[Button Assistant Enchanced]|r Edit mode enabled. Drag frames or right-click them for layout options.")
+		print("|cff4e84b1[Button Assistant Enhanced]|r Edit mode enabled. Drag frames or right-click them for layout options.")
 	else
 		ui.overlay:Hide()
 		if ui.exitButton then ui.exitButton:Hide() end
@@ -4403,7 +4403,7 @@ function NS.SetEditMode(enabled)
 		if ui.panel then ui.panel:Hide() end
 		NS.UpdateVisibility()
 		NS.UpdateNow()
-		print("|cff4e84b1[Button Assistant Enchanced]|r Edit mode disabled.")
+		print("|cff4e84b1[Button Assistant Enhanced]|r Edit mode disabled.")
 	end
 end
 
@@ -4600,8 +4600,8 @@ addonFrame:SetScript("OnEvent", function(self, event, ...)
 			end
 			NS.loaded = true
 
-			ButtonAssistantEnchancedDB = ButtonAssistantEnchancedDB or {}
-			NS.db = ButtonAssistantEnchancedDB
+			ButtonAssistantEnhancedDB = ButtonAssistantEnhancedDB or {}
+			NS.db = ButtonAssistantEnhancedDB
 			NS.CopyDefaults(NS.db, NS.defaults)
 			if (NS.db.cooldownModelVersion or 0) < COOLDOWN_MODEL_VERSION then
 				NS.db.ignoreGCD = false

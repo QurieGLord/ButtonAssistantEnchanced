@@ -1,7 +1,7 @@
 local ADDON_NAME, NS = ...
 
 NS.ADDON_NAME = ADDON_NAME
-NS.ADDON_DISPLAY_NAME = "Button Assistant Enchanced"
+NS.ADDON_DISPLAY_NAME = "Button Assistant Enhanced"
 local _, _, _, buildVersion = GetBuildInfo()
 NS.IS_MIDNIGHT = buildVersion >= 120000
 
@@ -187,19 +187,19 @@ NS.FontList = {
 	["Expressive"] = "SystemFont_Shadow_Med1",
 	["Large"] = "SystemFont_Shadow_Large",
 	-- Custom Fonts from NiceDamage
-	["Expressway"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\Expressway.ttf",
-	["Roboto Bold"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\Roboto-Bold.ttf",
-	["Denmark"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\Denmark.ttf",
-	["Prototype"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\Prototype.ttf",
-	["Zero Cool"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\ZeroCool.ttf",
-	["Big Noodle"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\bignoodletitling.ttf",
-	["Bangers"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\Bangers.ttf",
-	["Alte Haas"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\AlteHaasGroteskBold.ttf",
-	["Gotham Ultra"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\Gotham Narrow Ultra.otf",
-	["LifeCraft"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\LifeCraft_Font.ttf",
-	["Pepsi Modern"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\pepsi_modern.ttf",
-	["Zero Pixel"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\pf_tempesta_seven.ttf",
-	["Yikes"] = "Interface\\AddOns\\ButtonAssistantEnchanced\\Media\\Fonts\\yikes.ttf",
+	["Expressway"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\Expressway.ttf",
+	["Roboto Bold"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\Roboto-Bold.ttf",
+	["Denmark"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\Denmark.ttf",
+	["Prototype"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\Prototype.ttf",
+	["Zero Cool"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\ZeroCool.ttf",
+	["Big Noodle"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\bignoodletitling.ttf",
+	["Bangers"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\Bangers.ttf",
+	["Alte Haas"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\AlteHaasGroteskBold.ttf",
+	["Gotham Ultra"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\Gotham Narrow Ultra.otf",
+	["LifeCraft"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\LifeCraft_Font.ttf",
+	["Pepsi Modern"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\pepsi_modern.ttf",
+	["Zero Pixel"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\pf_tempesta_seven.ttf",
+	["Yikes"] = "Interface\\AddOns\\ButtonAssistantEnhanced\\Media\\Fonts\\yikes.ttf",
 }
 
 -- Hekili-style Data Structures

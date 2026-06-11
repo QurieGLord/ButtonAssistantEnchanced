@@ -13,7 +13,7 @@ function NS.SetupAvada()
 		return
 	end
 
-	local panel = NS.CreateFrame("Frame", "ButtonAssistantEnchancedAvadaConfig", NS.UIParent, "BackdropTemplate")
+	local panel = NS.CreateFrame("Frame", "ButtonAssistantEnhancedAvadaConfig", NS.UIParent, "BackdropTemplate")
 	panel:SetSize(720, 310)
 	panel:SetPoint("CENTER")
 	panel:SetFrameStrata("HIGH")

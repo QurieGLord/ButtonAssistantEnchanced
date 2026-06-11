@@ -26,7 +26,7 @@ function NS.RegisterSettings()
 			NS.UpdateNow()
 		end
 	end)
-	Settings.CreateCheckbox(category, enabledSetting, "Toggle Button Assistant Enchanced on/off.")
+	Settings.CreateCheckbox(category, enabledSetting, "Toggle Button Assistant Enhanced on/off.")
 
 	-- Lock Toggle
 	local lockedSetting = Register("locked", Settings.VarType.Boolean, "Locked", false, "Lock the frame to prevent dragging.")
@@ -595,11 +595,11 @@ end
 -- ---------------------------------------------------------------------
 -- Slash commands
 -- ---------------------------------------------------------------------
-SLASH_BUTTONASSISTANTENCHANCED1 = "/buttonassistantenchanced"
-SLASH_BUTTONASSISTANTENCHANCED2 = "/bae"
-SLASH_BUTTONASSISTANTENCHANCED3 = "/baenchanced"
+SLASH_BUTTONASSISTANTENHANCED1 = "/buttonassistantenhanced"
+SLASH_BUTTONASSISTANTENHANCED2 = "/bae"
+SLASH_BUTTONASSISTANTENHANCED3 = "/baenhanced"
 
-SlashCmdList.BUTTONASSISTANTENCHANCED = function(msg)
+SlashCmdList.BUTTONASSISTANTENHANCED = function(msg)
 	msg = msg and NS.string_lower(msg) or ""
 
 	if msg == "toggle" then
@@ -618,13 +618,13 @@ SlashCmdList.BUTTONASSISTANTENCHANCED = function(msg)
 	end
 
 	if msg == "errors" or msg == "logs" or msg == "error" then
-		if ButtonAssistantEnchancedDB and ButtonAssistantEnchancedDB.errors and #ButtonAssistantEnchancedDB.errors > 0 then
-			print("|cff4e84b1[Button Assistant Enchanced Logs]|r Displaying last 20 caught errors:")
-			for i, err in ipairs(ButtonAssistantEnchancedDB.errors) do
+		if ButtonAssistantEnhancedDB and ButtonAssistantEnhancedDB.errors and #ButtonAssistantEnhancedDB.errors > 0 then
+			print("|cff4e84b1[Button Assistant Enhanced Logs]|r Displaying last 20 caught errors:")
+			for i, err in ipairs(ButtonAssistantEnhancedDB.errors) do
 				print(("[%s] %s"):format(err.time, err.err))
 			end
 		else
-			print("|cff4e84b1[Button Assistant Enchanced Logs]|r No errors recorded. Addon is running smoothly!")
+			print("|cff4e84b1[Button Assistant Enhanced Logs]|r No errors recorded. Addon is running smoothly!")
 		end
 		return
 	end
@@ -636,8 +636,8 @@ SlashCmdList.BUTTONASSISTANTENCHANCED = function(msg)
 end
 
 -- Avada Config Slash Command
-SLASH_BUTTONASSISTANTENCHANCED_AVADA1 = "/baeavada"
-SlashCmdList.BUTTONASSISTANTENCHANCED_AVADA = function()
+SLASH_BUTTONASSISTANTENHANCED_AVADA1 = "/baeavada"
+SlashCmdList.BUTTONASSISTANTENHANCED_AVADA = function()
 	if NS.SetupAvada then
 		NS.SetupAvada()
 	end

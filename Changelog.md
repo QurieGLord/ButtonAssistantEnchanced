@@ -15,6 +15,7 @@ This release focuses on making cooldown awareness feel steadier across the main 
 - Kept next-ready and cooldown-ready effects separate from persistent proc glow styles.
 - Added a Classic Blizzard Dark border style for the main button and Avada Tracker.
 - Refined idle visual behavior to reduce unwanted flicker when no cooldown is active.
+- Corrected the project name spelling to **Button Assistant Enhanced** across addon metadata, docs, and release packaging.
 - Updated the release workflow so compact version tags like `v1.1` publish normally.
 
 ## [1.0.1] - 2026-06-04
@@ -35,7 +36,7 @@ A smoother layout and feedback pass for players who like their UI to stay where 
 
 ## [1.0.0] - 2026-06-04
 
-Initial public release of **Button Assistant Enchanced**.
+Initial public release of **Button Assistant Enhanced**.
 
 ### Highlights
 
@@ -52,4 +53,4 @@ Initial public release of **Button Assistant Enchanced**.
 
 ### Notes
 
-Button Assistant Enchanced is designed for modern World of Warcraft Retail and Blizzard's Assisted Combat feature.
+Button Assistant Enhanced is designed for modern World of Warcraft Retail and Blizzard's Assisted Combat feature.

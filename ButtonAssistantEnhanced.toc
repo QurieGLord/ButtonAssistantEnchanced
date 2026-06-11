@@ -1,10 +1,10 @@
 ## Interface: 110207 120000 120001
-## Title: |cff4e84b1Button|r |cffb0b0b0Assistant|r |cffffd36bEnchanced|r
+## Title: |cff4e84b1Button|r |cffb0b0b0Assistant|r |cffffd36bEnhanced|r
 ## Notes: A polished visual companion for Blizzard Assisted Combat with combat-safe cooldowns, keybinds, proc feedback, and a relaxed beer-friendly flow.
 ## Author: QurieGLord
 ## Version: 1.1
-## IconTexture: Interface\AddOns\ButtonAssistantEnchanced\Media\ButtonAssistantEnchancedIcon
-## SavedVariables: ButtonAssistantEnchancedDB
+## IconTexture: Interface\AddOns\ButtonAssistantEnhanced\Media\ButtonAssistantEnhancedIcon
+## SavedVariables: ButtonAssistantEnhancedDB
 
 ## Category-enUS: Combat
 ## Category-deDE: Combat
@@ -22,4 +22,4 @@ Constants.lua
 Functions.lua
 Config.lua
 AvadaConfig.lua
-ButtonAssistantEnchanced.lua
+ButtonAssistantEnhanced.lua
